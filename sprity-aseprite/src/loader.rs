@@ -1,13 +1,12 @@
 use crate::binary::{
     chunk::Chunk,
     chunks::{
-        cel::CelContent,
-        slice::SliceChunk,
+        cel::CelContent, color_profile::ColorProfileChunk, slice::SliceChunk
     },
     color_depth::ColorDepth,
     header::Header,
     image::Image,
-    palette::{create_palette, Palette},
+    palette::Palette,
     raw_file::{parse_raw_file, RawFile},
 };
 
@@ -30,7 +29,9 @@ pub enum LoadSpriteError {
 #[derive(Debug)]
 pub struct AsepriteFile<'a> {
     pub header: Header,
+    /// Used for indexed-to-RGB conversion
     pub palette: Option<Palette>,
+    pub color_profile: Option<ColorProfileChunk<'a>>,
     /// All layers in the file in order
     pub layers: Vec<Layer<'a>>,
     /// All frames in the file in order
@@ -44,17 +45,6 @@ pub struct AsepriteFile<'a> {
 
 impl<'a> AsepriteFile<'a> {
     fn init<'b: 'a>(&mut self, file: RawFile<'b>) -> Result<(), LoadSpriteError> {
-        self.palette = match file.header.color_depth {
-            ColorDepth::Indexed => {
-                Some(create_palette(&file.header, &file.frames).map_err(|e| {
-                    LoadSpriteError::Parse {
-                        message: e.to_string(),
-                    }
-                })?)
-            }
-            _ => None,
-        };
-
         let mut image_map = ahash::HashMap::default();
 
         for raw_frame in file.frames.into_iter() {
@@ -65,8 +55,19 @@ impl<'a> AsepriteFile<'a> {
             let mut chunk_it = raw_frame.chunks.into_iter().peekable();
             while let Some(chunk) = chunk_it.next() {
                 match chunk {
-                    Chunk::Palette0004(_) => {}
-                    Chunk::Palette0011(_) => {}
+                    Chunk::ColorProfile(profile) => {
+                        // Seems to be either normal sRGB, fixed sRGB, or an embedded ICC profile
+                        // Might want to use this info for the image making?
+                        self.color_profile = Some(profile);
+                    } 
+                    Chunk::Palette(chunk) => {
+                        // this seems to always be present, is only used for indexed color mode though
+                        let mut palette = Palette::default();
+                        palette.colors[self.header.transparent_index as usize].alpha = 0;
+                        for (entry, color_idx) in chunk.entries.iter().zip(chunk.indices.clone()) {
+                            palette.colors[color_idx as usize] = entry.color;
+                        }
+                    } 
                     Chunk::Layer(chunk) => {
                         // In the first frame, should get all the layer chunks first, then all the actual data in the first frame (cells, etc.)
                         let user_data = if let Some(Chunk::UserData(user_data)) =
@@ -117,12 +118,7 @@ impl<'a> AsepriteFile<'a> {
                             user_data,
                             image_index,
                         });
-                    }
-                    Chunk::CelExtra(_) => {}
-                    Chunk::ColorProfile(_) => {}
-                    Chunk::ExternalFiles(_) => {}
-                    Chunk::Mask(_) => {}
-                    Chunk::Path => {}
+                    }                   
                     Chunk::Tags(tags_chunk) => {
                         self.tags.extend(tags_chunk.tags.into_iter().map(|chunk| {
                             let user_data = if let Some(Chunk::UserData(user_data)) =
@@ -135,12 +131,19 @@ impl<'a> AsepriteFile<'a> {
                             Tag { chunk, user_data }
                         }))
                     }
-                    Chunk::Palette(_) => {}
-                    Chunk::UserData(_) => {}
                     Chunk::Slice(slice) => self.slices.push(slice),
                     Chunk::Tileset(_) => {
                         todo!()
                     }
+                    Chunk::ExternalFiles(_) => {} // Not sure in what situations external files are used
+                    Chunk::UserData(_) => {} // we parse all of the ones we want in their respective sections
+                    // Above might be useful
+                    Chunk::CelExtra(_) => {} // Not sure what this is for (precise position? width/height scaled in real time?)
+                    // below is old/deprecated
+                    Chunk::Palette0004(_) => {} // only used by old versions of ase
+                    Chunk::Palette0011(_) => {} // only used by old versions of ase
+                    Chunk::Mask(_) => {} // deprecated by ase
+                    Chunk::Path => {} // unused by ase
                     Chunk::Unsupported(_) => {}
                 }
             }
@@ -157,6 +160,7 @@ impl<'a> AsepriteFile<'a> {
         let mut ase = Self {
             header: raw_file.header,
             palette: Default::default(),
+            color_profile: Default::default(),
             layers: Default::default(),
             frames: Default::default(),
             tags: Default::default(),

@@ -10,7 +10,9 @@ pub struct CelExtraChunk<'a> {
     pub flags: CelExtraFlags,
     pub precise_x_position: Fixed,
     pub precise_y_position: Fixed,
+    /// Width of the cel in the sprite (scaled in real-time)
     pub width_of_the_cel: Fixed,
+    /// Height of the cel in the sprite (scaled in real-time)
     pub height_of_the_cel: Fixed,
     pub future: &'a [u8],
 }

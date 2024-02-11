@@ -2,10 +2,7 @@ use std::str::Utf8Error;
 
 use nom::IResult;
 
-use super::{
-    palette::PaletteError,
-    scalars::{Dword, Word},
-};
+use super::{palette::PaletteError, scalars::{Dword, Word}};
 
 #[derive(Debug, strum_macros::Display)]
 pub enum ParseError<'a> {
