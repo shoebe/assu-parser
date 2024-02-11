@@ -23,4 +23,5 @@
 
 pub mod binary;
 pub mod loader;
+pub mod make_image;
 mod tests;
