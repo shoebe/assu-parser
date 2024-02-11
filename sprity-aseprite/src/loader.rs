@@ -1,37 +1,49 @@
 use std::{collections::HashMap, ops::Range};
 
 use flate2::Decompress;
+use itertools::Itertools;
 
 use crate::binary::{
     blend_mode::BlendMode,
-    chunks::{cel::CelContent, layer::{LayerType, LayerFlags}, slice::SliceChunk, tags::AnimationDirection},
+    chunk::Chunk,
+    chunk_type::ChunkType,
+    chunks::{
+        cel::{CelChunk, CelContent},
+        layer::{LayerFlags, LayerType},
+        slice::SliceChunk,
+        tags::AnimationDirection,
+    },
     color_depth::ColorDepth,
-    file::{parse_file, File},
+    header::Header,
     image::Image,
-    palette::Palette,
+    palette::{create_palette, Palette},
+    raw_file::{parse_raw_file, RawFile},
 };
 
 #[derive(Debug)]
 pub struct AsepriteFile<'a> {
-    file: File<'a>,
+    pub(crate) header: Header,
+    pub(crate) palette: Option<Palette>,
     /// All layers in the file in order
-    layers: Vec<Layer>,
+    pub(crate) layers: Vec<Layer>,
     /// All frames in the file in order
-    frames: Vec<Frame>,
+    pub(crate) frames: Vec<Frame>,
     /// All tags in the file
-    tags: Vec<Tag>,
+    pub(crate) tags: Vec<Tag>,
     /// All images in the file
-    images: Vec<Image<'a>>,
+    pub(crate) images: Vec<Image<'a>>,
+    pub(crate) slices: Vec<SliceChunk<'a>>,
 }
 
 /// A cell in a frame
 /// This is a reference to an image cell
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct FrameCell {
     pub origin: (i16, i16),
     pub size: (u16, u16),
     pub layer_index: usize,
     pub image_index: usize,
+    pub user_data: String,
 }
 
 /// A frame in the file
@@ -51,6 +63,7 @@ pub struct Tag {
     pub range: Range<u16>,
     pub direction: AnimationDirection,
     pub repeat: Option<u16>,
+    pub user_data: String,
 }
 
 /// A layer in the file
@@ -60,107 +73,149 @@ pub struct Layer {
     pub opacity: u8,
     pub blend_mode: BlendMode,
     pub visible: bool,
+    pub user_data: String,
+    pub tileset_ind: Option<usize>,
 }
 
-impl AsepriteFile<'_> {
+impl<'a> AsepriteFile<'a> {
+    fn new(header: Header) -> AsepriteFile<'a> {
+        Self {
+            header,
+            palette: Default::default(),
+            layers: Default::default(),
+            frames: Default::default(),
+            tags: Default::default(),
+            images: Default::default(),
+            slices: Default::default(),
+        }
+    }
+
+    fn init<'b: 'a>(&mut self, file: RawFile<'b>) -> Result<(), LoadSpriteError> {
+        self.palette = match file.header.color_depth {
+            ColorDepth::Indexed => {
+                Some(create_palette(&file.header, &file.frames).map_err(|e| {
+                    LoadSpriteError::Parse {
+                        message: e.to_string(),
+                    }
+                })?)
+            }
+            _ => None,
+        };
+
+        for raw_frame in file.frames.into_iter() {
+            self.frames.push(Frame {
+                duration: raw_frame.duration,
+                origin: (0, 0),
+                cells: Default::default(),
+            });
+            let mut chunk_it = raw_frame.chunks.into_iter().peekable();
+            while let Some(chunk) = chunk_it.next() {
+                match chunk {
+                    Chunk::Palette0004(_) => {}
+                    Chunk::Palette0011(_) => {}
+                    Chunk::Layer(layer) => {
+                        // In the first frame, should get all the layer chunks first, then all the actual data in the first frame (cells, etc.)
+                        let user_data = if let Some(Chunk::UserData(user_data)) =
+                            chunk_it.next_if(Chunk::is_user_data)
+                        {
+                            user_data.text.unwrap_or_default().to_string()
+                        } else {
+                            Default::default()
+                        };
+                        match layer.layer_type {
+                            LayerType::Normal | LayerType::Tilemap => {
+                                self.layers.push(Layer {
+                                    name: layer.name.to_string(),
+                                    opacity: layer.opacity,
+                                    blend_mode: layer.blend_mode,
+                                    visible: layer.flags.contains(LayerFlags::VISIBLE),
+                                    user_data,
+                                    tileset_ind: layer.tileset_index.map(|a| a as usize),
+                                });
+                            }
+                            LayerType::Group => {
+                                todo!()
+                            }
+                            _ => panic!(),
+                        }
+                    }
+                    Chunk::Cel(cel) => {
+                        let user_data = if let Some(Chunk::UserData(user_data)) =
+                            chunk_it.next_if(Chunk::is_user_data)
+                        {
+                            user_data.text.unwrap_or_default().to_string()
+                        } else {
+                            Default::default()
+                        };
+                        match cel.content {
+                            CelContent::Image(image) => {
+                                let image_index = self.images.len();
+                                self.images.push(image.clone());
+                                self.frames.last_mut().unwrap().cells.push(FrameCell {
+                                    origin: (cel.x, cel.y),
+                                    size: (image.width, image.height),
+                                    layer_index: cel.layer_index.into(),
+                                    image_index,
+                                    user_data,
+                                });
+                            }
+                            CelContent::LinkedCel { frame_position } => todo!(),
+                            _ => (),
+                        }
+                    }
+                    Chunk::CelExtra(_) => {}
+                    Chunk::ColorProfile(_) => {}
+                    Chunk::ExternalFiles(_) => {}
+                    Chunk::Mask(_) => {}
+                    Chunk::Path => {}
+                    Chunk::Tags(tags_chunk) => {
+                        self.tags.extend(tags_chunk.tags.into_iter().map(|tag| {
+                            let user_data = if let Some(Chunk::UserData(user_data)) =
+                                chunk_it.next_if(Chunk::is_user_data)
+                            {
+                                user_data.text.unwrap_or_default().to_string()
+                            } else {
+                                Default::default()
+                            };
+                            Tag {
+                                name: tag.name.to_string(),
+                                range: tag.frames.clone(),
+                                direction: tag.animation_direction,
+                                repeat: if tag.animation_repeat > 0 {
+                                    Some(tag.animation_repeat)
+                                } else {
+                                    None
+                                },
+                                user_data,
+                            }
+                        }))
+                    }
+                    Chunk::Palette(_) => {}
+                    Chunk::UserData(user_data) => {}
+                    Chunk::Slice(slice) => self.slices.push(slice),
+                    Chunk::Tileset(_) => {
+                        todo!()
+                    }
+                    Chunk::Unsupported(_) => {}
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Load a aseprite file from a byte slice
-    pub fn load(data: &[u8]) -> Result<AsepriteFile<'_>, LoadSpriteError> {
-        let file = parse_file(data).map_err(|e| LoadSpriteError::Parse {
+    pub fn load<'b: 'a>(data: &'b [u8]) -> Result<AsepriteFile<'a>, LoadSpriteError> {
+        let raw_file = parse_raw_file(data).map_err(|e| LoadSpriteError::Parse {
             message: e.to_string(),
         })?;
-        let layers: Vec<_> = file
-            .layers
-            .iter()
-            .filter_map(|layer| {
-                if layer.layer_type == LayerType::Normal {
-                    Some(Layer {
-                        name: layer.name.to_string(),
-                        opacity: layer.opacity,
-                        blend_mode: layer.blend_mode,
-                        visible: layer.flags.contains(LayerFlags::VISIBLE),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        let mut image_vec: Vec<Image<'_>> = Vec::new();
-        let mut image_map: HashMap<(usize, usize), usize> = HashMap::new();
-
-        for (frame_index, frame) in file.frames.iter().enumerate() {
-            for cel in frame.cels.iter().filter_map(|x| x.as_ref()) {
-                if let CelContent::Image(image) = &cel.content {
-                    let image_index = image_vec.len();
-                    image_vec.push(image.clone());
-                    let _ = image_map.insert((frame_index, cel.layer_index.into()), image_index);
-                }
-            }
-        }
-
-        let mut frames: Vec<Frame> = Vec::new();
-        let mut tags: Vec<Tag> = Vec::new();
-
-        for tag in file.tags.iter() {
-            tags.push(Tag {
-                name: tag.name.to_string(),
-                range: tag.frames.clone(),
-                direction: tag.animation_direction,
-                repeat: if tag.animation_repeat > 0 {
-                    Some(tag.animation_repeat)
-                } else {
-                    None
-                },
-            });
-        }
-
-        for (index, frame) in file.frames.iter().enumerate() {
-            let mut cells: Vec<FrameCell> = Vec::new();
-            for cel in frame.cels.iter().filter_map(|x| x.as_ref()) {
-                let image_index = match cel.content {
-                    CelContent::Image(_) => image_map[&(index, cel.layer_index.into())],
-                    CelContent::LinkedCel { frame_position } => *image_map
-                        .get(&(frame_position.into(), cel.layer_index.into()))
-                        .ok_or_else(|| LoadSpriteError::Parse {
-                            message: format!(
-                                "invalid linked cell at frame {} layer {}",
-                                index, cel.layer_index
-                            ),
-                        })?,
-                    _ => {
-                        return Err(LoadSpriteError::Parse {
-                            message: "invalid cell".to_owned(),
-                        })
-                    }
-                };
-                let width = image_vec[image_index].width;
-                let height = image_vec[image_index].height;
-                cells.push(FrameCell {
-                    origin: (cel.x, cel.y),
-                    size: (width, height),
-                    layer_index: cel.layer_index.into(),
-                    image_index,
-                });
-            }
-
-            frames.push(Frame {
-                duration: frame.duration,
-                origin: (0, 0),
-                cells,
-            });
-        }
-
-        Ok(AsepriteFile {
-            file,
-            tags,
-            layers,
-            frames,
-            images: image_vec,
-        })
+        let mut ase = Self::new(raw_file.header);
+        ase.init(raw_file)?;
+        Ok(ase)
     }
     /// Get size of the sprite (width, height)
     pub fn size(&self) -> (u16, u16) {
-        (self.file.header.width, self.file.header.height)
+        (self.header.width, self.header.height)
     }
     /// Get tag names
     pub fn tags(&self) -> &[Tag] {
@@ -190,8 +245,7 @@ impl AsepriteFile<'_> {
         let mut hash = 0u64;
 
         let target_size =
-            usize::from(usize::from(self.file.header.width) * usize::from(self.file.header.height))
-                * 4;
+            usize::from(usize::from(self.header.width) * usize::from(self.header.height)) * 4;
 
         if target.len() < target_size {
             return Err(LoadImageError::TargetBufferTooSmall);
@@ -200,17 +254,14 @@ impl AsepriteFile<'_> {
         let frame = &self.frames[frame_index];
 
         for cell in frame.cells.iter() {
-
             let layer = &self.layers[cell.layer_index];
             if layer.visible == false {
                 continue;
             }
 
-
             let mut cell_target = vec![0; usize::from(cell.size.0 * cell.size.1) * 4];
             self.load_image(cell.image_index, &mut cell_target).unwrap();
             let layer = &self.layers[cell.layer_index];
-
 
             hash += cell.image_index as u64;
             hash += cell.layer_index as u64 * 100;
@@ -224,7 +275,7 @@ impl AsepriteFile<'_> {
                     let origin_x = x + cell.origin.0 as u16;
                     let origin_y = y + cell.origin.1 as u16;
 
-                    let target_index = (origin_y * self.file.header.width + origin_x) as usize;
+                    let target_index = (origin_y * self.header.width + origin_x) as usize;
                     let cell_index = (y * cell.size.0 + x) as usize;
 
                     let target_pixel: &mut [u8] =
@@ -258,7 +309,7 @@ impl AsepriteFile<'_> {
             return Err(LoadImageError::TargetBufferTooSmall);
         }
         let target = &mut target[..target_size];
-        match (self.file.header.color_depth, image.compressed) {
+        match (self.header.color_depth, image.compressed) {
             (ColorDepth::Rgba, false) => target.copy_from_slice(image.data),
             (ColorDepth::Rgba, true) => decompress(image.data, target)?,
             (ColorDepth::Grayscale, false) => {
@@ -272,8 +323,7 @@ impl AsepriteFile<'_> {
             (ColorDepth::Indexed, false) => {
                 indexed_to_rgba(
                     image.data,
-                    self.file
-                        .palette
+                    self.palette
                         .as_ref()
                         .ok_or(LoadImageError::MissingPalette)?,
                     target,
@@ -284,8 +334,7 @@ impl AsepriteFile<'_> {
                 decompress(image.data, &mut buf)?;
                 indexed_to_rgba(
                     &buf,
-                    self.file
-                        .palette
+                    self.palette
                         .as_ref()
                         .ok_or(LoadImageError::MissingPalette)?,
                     target,
@@ -296,7 +345,7 @@ impl AsepriteFile<'_> {
         Ok(())
     }
     pub fn slices(&self) -> &[SliceChunk<'_>] {
-        &self.file.slices
+        &self.slices
     }
 }
 

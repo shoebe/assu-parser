@@ -77,9 +77,9 @@ pub fn parse_tag(input: &[u8]) -> ParseResult<'_, Tag<'_>> {
 
 #[test]
 fn test_tags() {
-    use crate::binary::file::parse_file;
+    use crate::loader::AsepriteFile;
     let input = std::fs::read("./tests/tags.aseprite").unwrap();
-    let file = parse_file(&input).unwrap();
+    let file = AsepriteFile::load(&input).unwrap();
     assert_eq!(file.frames.len(), 1);
     assert_eq!(file.frames[0].duration, 100);
     assert_eq!(file.tags.len(), 3);

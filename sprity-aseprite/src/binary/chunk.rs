@@ -20,7 +20,7 @@ use super::{
     scalars::dword_size,
 };
 
-#[derive(Debug)]
+#[derive(Debug, is_macro::Is)]
 pub enum Chunk<'a> {
     Palette0004(OldPaletteChunk),
     Palette0011(OldPaletteChunk),
