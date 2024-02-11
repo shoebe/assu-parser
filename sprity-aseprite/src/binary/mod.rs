@@ -8,7 +8,6 @@ pub mod chunk_type;
 pub mod chunks;
 pub mod color_depth;
 pub mod errors;
-pub mod frame;
 pub mod header;
 pub mod image;
 pub mod palette;

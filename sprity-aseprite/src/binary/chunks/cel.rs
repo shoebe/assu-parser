@@ -7,7 +7,7 @@ use crate::binary::{
     scalars::{byte, dword, short, word, Byte, Dword, Short, Word},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 /// This chunk determine where to put a cel in the specified layer/frame.
 pub struct CelChunk<'a> {
     /// Layer index (see NOTE.2)
@@ -44,7 +44,7 @@ impl From<Word> for CelType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum CelContent<'a> {
     Image(Image<'a>),
     LinkedCel {

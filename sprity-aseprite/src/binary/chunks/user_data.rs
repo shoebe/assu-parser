@@ -26,7 +26,6 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
 /// Specifies the user data (color/text/properties) to be associated with the last read chunk/object.
 /// E.g. If the last chunk we've read is a layer and then this chunk appears, this user data belongs to that layer,
 /// if we've read a cel, it belongs to that cel, etc. There are some special cases:
@@ -37,11 +36,11 @@ bitflags! {
 ///      (if the file was created in an older Aseprite version of if no tile has user data).
 ///   3. In Aseprite v1.3 a sprite has associated user data, to consider this case there is an User Data
 ///      Chunk at the first frame after the Palette Chunk.
-
+#[derive(Debug, Clone, Copy, Default)]
 pub struct UserDataChunk<'a> {
     pub text: Option<&'a str>,
     pub color: Option<Color>,
-    pub properties_maps: Option<ParseResult<'a, Vec<PropertiesMap<'a>>>>,
+    //pub properties_maps: Option<ParseResult<'a, Vec<PropertiesMap<'a>>>>,
 }
 
 #[derive(Debug)]
@@ -137,12 +136,13 @@ pub fn parse_user_data_chunk(input: &[u8]) -> ParseResult<'_, UserDataChunk<'_>>
         flags.contains(UserDataFlags::HAS_PROPERTIES),
         parse_properties_maps,
     )(input)?;
+    let _ = properties_maps;
     Ok((
         input,
         (UserDataChunk {
             text,
             color,
-            properties_maps,
+            //properties_maps,
         }),
     ))
 }

@@ -4,7 +4,7 @@ use crate::{
     },
     loader::AsepriteFile,
 };
-use rgb::{ComponentSlice, FromSlice};
+use rgb::{ComponentBytes, ComponentSlice, FromSlice, Zeroable, RGBA8};
 use thiserror::Error;
 
 #[allow(missing_copy_implementations)]
@@ -93,73 +93,67 @@ fn blend_channel(first: u8, second: u8, alpha: u8, blend_mode: BlendMode) -> u8 
     (blended.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
+#[derive(Debug)]
+pub struct SizedImage {
+    pub pixels: Vec<RGBA8>,
+    pub width: usize,
+    pub height: usize,
+}
+
 impl AsepriteFile<'_> {
     /// Get image loader for a given frame index
     /// This will combine all layers into a single image
-    /// returns a hash describing the image, since cells can be reused in multiple frames
-    pub fn combined_frame_image(
-        &self,
-        frame_index: usize,
-        target: &mut [u8],
-    ) -> Result<(), LoadImageError> {
-        let target_size = self.size_bytes_rgba();
-
-        if target.len() < target_size {
-            return Err(LoadImageError::TargetBufferTooSmall);
-        }
-
-        let pixels = target.as_rgba_mut();
+    /// It would be a good idea to detect duplicates, some frames could be identical to others
+    /// This outputs an image the size of the aseprite canvas
+    /// TODO: make it so it outputs an image the smallest size possible (max of the cels in this frame)
+    pub fn combined_frame_image(&self, frame_index: usize) -> Result<SizedImage, LoadImageError> {
+        let mut pixels = vec![RGBA8::zeroed(); self.pixel_count()];
 
         let frame = &self.frames[frame_index];
 
-        for cell in frame.cells.iter() {
-            let layer = &self.layers[cell.layer_index];
-            if !layer.visible {
+        for cel in frame.cells.iter() {
+            let layer = &self.layers[cel.layer_index()];
+            if !layer.visible() {
                 continue;
             }
 
-            let mut cell_target = vec![0; cell.size.0 as usize * cell.size.1 as usize * 4];
-            self.load_image(cell.image_index, &mut cell_target).unwrap();
-            let cell_pixels = cell_target.as_rgba();
-            let layer = &self.layers[cell.layer_index];
+            let cel_img = self.load_image(cel.image_index).unwrap();
+            let im = &self.images[cel.image_index];
 
-            for y in 0..cell.size.1 {
-                for x in 0..cell.size.0 {
-                    let origin_x = x + cell.origin.0 as u16;
-                    let origin_y = y + cell.origin.1 as u16;
+            for (pixel_ind, cel_pixel) in cel_img.pixels.iter().enumerate() {
+                let x = pixel_ind % im.width as usize;
+                let y = pixel_ind / im.width as usize;
 
-                    let target_index = (origin_y * self.header.width + origin_x) as usize;
-                    let cell_index = (y * cell.size.0 + x) as usize;
+                let x_target = x + cel.x();
+                let y_target = y + cel.y();
 
-                    let target_pixel = &mut pixels[target_index];
+                let target_index = y_target * self.header.width as usize + x_target;
 
-                    let cell_pixel = &cell_pixels[cell_index];
+                let target_pixel = &mut pixels[target_index];
 
-                    let total_alpha =
-                        ((cell_pixel.a as u16 * layer.opacity as u16) / u8::MAX as u16) as u8;
+                let total_alpha =
+                    ((cel_pixel.a as u16 * layer.chunk.opacity as u16) / u8::MAX as u16) as u8;
 
-                    for (target_c, cell_c) in target_pixel
-                        .as_mut_slice()
-                        .iter_mut()
-                        .zip(cell_pixel.iter())
-                    {
-                        *target_c = blend_channel(*target_c, cell_c, total_alpha, layer.blend_mode);
-                    }
+                for (target_c, cell_c) in target_pixel.as_mut_slice().iter_mut().zip(cel_pixel.iter()) {
+                    *target_c =
+                        blend_channel(*target_c, cell_c, total_alpha, layer.chunk.blend_mode);
                 }
             }
         }
 
-        Ok(())
+        Ok(SizedImage {
+            pixels,
+            width: self.canvas_width() as usize,
+            height: self.canvas_height() as usize,
+        })
     }
 
     /// Get image loader for a given image index
-    pub fn load_image(&self, index: usize, target: &mut [u8]) -> Result<(), LoadImageError> {
+    pub fn load_image(&self, index: usize) -> Result<SizedImage, LoadImageError> {
         let image = &self.images[index];
-        let target_size = image.width as usize * image.height as usize * 4;
-        if target.len() < target_size {
-            return Err(LoadImageError::TargetBufferTooSmall);
-        }
-        let target = &mut target[..target_size];
+        let mut pixels = vec![RGBA8::zeroed(); image.pixel_count()];
+        let target = pixels.as_bytes_mut();
+
         match (self.header.color_depth, image.compressed) {
             (ColorDepth::Rgba, false) => target.copy_from_slice(image.data),
             (ColorDepth::Rgba, true) => decompress(image.data, target)?,
@@ -167,7 +161,7 @@ impl AsepriteFile<'_> {
                 grayscale_to_rgba(image.data, target)?;
             }
             (ColorDepth::Grayscale, true) => {
-                let mut buf = vec![0u8; (image.width * image.height * 2) as usize];
+                let mut buf = vec![0u8; image.pixel_count()];
                 decompress(image.data, &mut buf)?;
                 grayscale_to_rgba(&buf, target)?;
             }
@@ -181,7 +175,7 @@ impl AsepriteFile<'_> {
                 )?;
             }
             (ColorDepth::Indexed, true) => {
-                let mut buf = vec![0u8; (image.width * image.height) as usize];
+                let mut buf = vec![0u8; image.pixel_count()];
                 decompress(image.data, &mut buf)?;
                 indexed_to_rgba(
                     &buf,
@@ -193,7 +187,7 @@ impl AsepriteFile<'_> {
             }
             (ColorDepth::Unknown(_), _) => return Err(LoadImageError::UnsupportedColorDepth),
         }
-        Ok(())
+        Ok(SizedImage { pixels, width: image.width as usize, height: image.height as usize })
     }
     pub fn slices(&self) -> &[SliceChunk<'_>] {
         &self.slices

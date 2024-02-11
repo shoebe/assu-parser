@@ -7,7 +7,7 @@ use crate::binary::{
     scalars::{byte, dword, parse_string, word, Byte, Dword, Word},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 /// In the first frame should be a set of layer chunks to determine the entire layers layout:
 pub struct LayerChunk<'a> {
     pub flags: LayerFlags,
@@ -20,7 +20,7 @@ pub struct LayerChunk<'a> {
 }
 
 bitflags! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy)]
     pub struct LayerFlags: Word {
         const VISIBLE = 0x1;
         const EDITABLE = 0x2;
@@ -82,12 +82,12 @@ pub fn parse_layer_chunk(input: &[u8]) -> ParseResult<'_, LayerChunk<'_>> {
 #[test]
 fn test_layers() {
     use crate::loader::AsepriteFile;
-    let input = std::fs::read("./tests/layers.aseprite").unwrap();
+    let input = std::fs::read("tests/aseprite_files/layers.aseprite").unwrap();
     let file = AsepriteFile::load(&input).unwrap();
     assert_eq!(file.frames.len(), 1);
     assert_eq!(file.frames[0].duration, 100);
     assert_eq!(file.layers.len(), 3);
-    assert_eq!(file.layers[0].name, "Layer 1");
-    assert_eq!(file.layers[1].name, "Layer 2");
-    assert_eq!(file.layers[2].name, "Layer 3");
+    assert_eq!(file.layers[0].name(), "Layer 1");
+    assert_eq!(file.layers[1].name(), "Layer 2");
+    assert_eq!(file.layers[2].name(), "Layer 3");
 }

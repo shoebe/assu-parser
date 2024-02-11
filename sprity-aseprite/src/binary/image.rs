@@ -1,6 +1,6 @@
 use super::scalars::Word;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Image<'a> {
     /// Width in pixels
     pub width: Word,
@@ -13,4 +13,10 @@ pub struct Image<'a> {
     pub data: &'a [u8],
     /// True if the cel data is compressed
     pub compressed: bool,
+}
+
+impl Image<'_> {
+    pub fn pixel_count(&self) -> usize {
+        self.width as usize * self.height as usize
+    }
 }

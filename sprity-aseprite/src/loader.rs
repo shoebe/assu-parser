@@ -1,13 +1,16 @@
-use std::{collections::HashMap, ops::Range};
+use std::{
+    collections::HashMap,
+    ops::RangeBounds,
+};
 
 use crate::binary::{
-    blend_mode::BlendMode,
     chunk::Chunk,
     chunks::{
-        cel::CelContent,
-        layer::{LayerFlags, LayerType},
+        cel::{CelChunk, CelContent},
+        layer::{LayerChunk, LayerFlags},
         slice::SliceChunk,
-        tags::AnimationDirection,
+        tags::TagChunk,
+        user_data::UserDataChunk,
     },
     color_depth::ColorDepth,
     header::Header,
@@ -30,61 +33,94 @@ pub enum LoadSpriteError {
     FrameIndexOutOfRange(usize),
 }
 
-/// A cell in a frame
-/// This is a reference to an image cell
-#[derive(Debug, Clone)]
-pub struct FrameCell {
-    pub origin: (i16, i16),
-    pub size: (u16, u16),
-    pub layer_index: usize,
+/// A cel in a frame, there is usually 1 per layer
+#[derive(Debug, Clone, Copy)]
+pub struct Cel<'a> {
+    pub chunk: CelChunk<'a>,
+    pub user_data: UserDataChunk<'a>,
     pub image_index: usize,
-    pub user_data: String,
+}
+
+impl Cel<'_> {
+    pub fn layer_index(&self) -> usize {
+        self.chunk.layer_index as usize
+    }
+    pub fn x(&self) -> usize {
+        self.chunk.x as usize
+    }
+    pub fn y(&self) -> usize {
+        self.chunk.y as usize
+    }
+    pub fn z_index(&self) -> i16 {
+        self.chunk.z_index
+    }
 }
 
 /// A frame in the file
 /// This is a collection of cells for each layer
 #[derive(Debug, Clone)]
-pub struct Frame {
-    pub duration: u16,
-    pub origin: (i16, i16),
-    pub cells: Vec<FrameCell>,
+pub struct Frame<'a> {
+    /// In milliseconds
+    pub duration: u32,
+    pub cells: Vec<Cel<'a>>,
 }
 
-/// A tag in the file
-/// This is a range of frames over the frames in the file, ordered by frame index
-#[derive(Debug, Clone)]
-pub struct Tag {
-    pub name: String,
-    pub range: Range<u16>,
-    pub direction: AnimationDirection,
-    pub repeat: Option<u16>,
-    pub user_data: String,
+impl Frame<'_> {
+    pub fn iter_cells(&self) -> impl Iterator<Item = &Cel<'_>> {
+        self.cells.iter()
+    }
+    pub fn cell_at_layer_index(&self, layer_index: usize) -> Option<Cel<'_>> {
+        // Binary search should be fast enough
+        self.cells
+            .binary_search_by(|c| c.layer_index().cmp(&layer_index))
+            .ok()
+            .map(|i| self.cells[i])
+    }
 }
 
-/// A layer in the file
-#[derive(Debug, Clone)]
-pub struct Layer {
-    pub name: String,
-    pub opacity: u8,
-    pub blend_mode: BlendMode,
-    pub visible: bool,
-    pub user_data: String,
-    pub tileset_ind: Option<usize>,
+#[derive(Debug, Clone, Copy)]
+pub struct Tag<'a> {
+    pub chunk: TagChunk<'a>,
+    pub user_data: UserDataChunk<'a>,
+}
+
+impl Tag<'_> {
+    pub fn frame_range(&self) -> impl RangeBounds<usize> {
+        self.chunk.frames.0 as usize..=self.chunk.frames.1 as usize
+    }
+    pub fn name(&self) -> &str {
+        self.chunk.name
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Layer<'a> {
+    pub chunk: LayerChunk<'a>,
+    pub user_data: UserDataChunk<'a>,
+}
+
+impl Layer<'_> {
+    pub fn name(&self) -> &str {
+        self.chunk.name
+    }
+    pub fn visible(&self) -> bool {
+        self.chunk.flags.contains(LayerFlags::VISIBLE)
+    }
 }
 
 #[derive(Debug)]
 pub struct AsepriteFile<'a> {
-    pub(crate) header: Header,
-    pub(crate) palette: Option<Palette>,
+    pub header: Header,
+    pub palette: Option<Palette>,
     /// All layers in the file in order
-    pub(crate) layers: Vec<Layer>,
+    pub layers: Vec<Layer<'a>>,
     /// All frames in the file in order
-    pub(crate) frames: Vec<Frame>,
+    pub frames: Vec<Frame<'a>>,
     /// All tags in the file
-    pub(crate) tags: Vec<Tag>,
+    pub tags: Vec<Tag<'a>>,
     /// All images in the file
-    pub(crate) images: Vec<Image<'a>>,
-    pub(crate) slices: Vec<SliceChunk<'a>>,
+    pub images: Vec<Image<'a>>,
+    pub slices: Vec<SliceChunk<'a>>,
 }
 
 impl<'a> AsepriteFile<'a> {
@@ -104,8 +140,7 @@ impl<'a> AsepriteFile<'a> {
 
         for raw_frame in file.frames.into_iter() {
             self.frames.push(Frame {
-                duration: raw_frame.duration,
-                origin: (0, 0),
+                duration: raw_frame.duration as u32,
                 cells: Default::default(),
             });
             let mut chunk_it = raw_frame.chunks.into_iter().peekable();
@@ -113,51 +148,38 @@ impl<'a> AsepriteFile<'a> {
                 match chunk {
                     Chunk::Palette0004(_) => {}
                     Chunk::Palette0011(_) => {}
-                    Chunk::Layer(layer) => {
+                    Chunk::Layer(chunk) => {
                         // In the first frame, should get all the layer chunks first, then all the actual data in the first frame (cells, etc.)
                         let user_data = if let Some(Chunk::UserData(user_data)) =
                             chunk_it.next_if(Chunk::is_user_data)
                         {
-                            user_data.text.unwrap_or_default().to_string()
+                            user_data
                         } else {
                             Default::default()
                         };
-                        match layer.layer_type {
-                            LayerType::Normal | LayerType::Tilemap => {
-                                self.layers.push(Layer {
-                                    name: layer.name.to_string(),
-                                    opacity: layer.opacity,
-                                    blend_mode: layer.blend_mode,
-                                    visible: layer.flags.contains(LayerFlags::VISIBLE),
-                                    user_data,
-                                    tileset_ind: layer.tileset_index.map(|a| a as usize),
-                                });
-                            }
-                            LayerType::Group => {
-                                todo!()
-                            }
-                            _ => panic!(),
-                        }
+                        self.layers.push(Layer { chunk, user_data });
                     }
-                    Chunk::Cel(cel) => {
+                    Chunk::Cel(chunk) => {
                         let user_data = if let Some(Chunk::UserData(user_data)) =
                             chunk_it.next_if(Chunk::is_user_data)
                         {
-                            user_data.text.unwrap_or_default().to_string()
+                            user_data
                         } else {
                             Default::default()
                         };
 
-                        let image_index = match cel.content {
+                        let image_index = match chunk.content {
                             CelContent::Image(image) => {
                                 let image_index = self.images.len();
-                                self.images.push(image.clone());
-                                image_map
-                                    .insert((self.frames.len() - 1, cel.layer_index), image_index);
+                                self.images.push(image);
+                                image_map.insert(
+                                    (self.frames.len() - 1, chunk.layer_index),
+                                    image_index,
+                                );
                                 image_index
                             }
                             CelContent::LinkedCel { frame_position } => {
-                                image_map[&(frame_position as usize, cel.layer_index)]
+                                image_map[&(frame_position as usize, chunk.layer_index)]
                             }
                             CelContent::CompressedTilemap { .. } => {
                                 return Err(LoadSpriteError::Parse {
@@ -171,13 +193,10 @@ impl<'a> AsepriteFile<'a> {
                                 });
                             }
                         };
-                        let im = &self.images[image_index];
-                        self.frames.last_mut().unwrap().cells.push(FrameCell {
-                            origin: (cel.x, cel.y),
-                            size: (im.width, im.height),
-                            layer_index: cel.layer_index as usize,
-                            image_index,
+                        self.frames.last_mut().unwrap().cells.push(Cel {
+                            chunk,
                             user_data,
+                            image_index,
                         });
                     }
                     Chunk::CelExtra(_) => {}
@@ -186,25 +205,15 @@ impl<'a> AsepriteFile<'a> {
                     Chunk::Mask(_) => {}
                     Chunk::Path => {}
                     Chunk::Tags(tags_chunk) => {
-                        self.tags.extend(tags_chunk.tags.into_iter().map(|tag| {
+                        self.tags.extend(tags_chunk.tags.into_iter().map(|chunk| {
                             let user_data = if let Some(Chunk::UserData(user_data)) =
                                 chunk_it.next_if(Chunk::is_user_data)
                             {
-                                user_data.text.unwrap_or_default().to_string()
+                                user_data
                             } else {
                                 Default::default()
                             };
-                            Tag {
-                                name: tag.name.to_string(),
-                                range: tag.frames.clone(),
-                                direction: tag.animation_direction,
-                                repeat: if tag.animation_repeat > 0 {
-                                    Some(tag.animation_repeat)
-                                } else {
-                                    None
-                                },
-                                user_data,
-                            }
+                            Tag { chunk, user_data }
                         }))
                     }
                     Chunk::Palette(_) => {}
@@ -238,27 +247,16 @@ impl<'a> AsepriteFile<'a> {
         ase.init(raw_file)?;
         Ok(ase)
     }
-    /// Get size of the sprite (width, height)
-    pub fn size(&self) -> (u16, u16) {
-        (self.header.width, self.header.height)
+
+    pub fn canvas_height(&self) -> u16 {
+        self.header.height
     }
-    pub fn size_bytes_rgba(&self) -> usize {
-        self.header.width as usize * self.header.height as usize * 4
+
+    pub fn canvas_width(&self) -> u16 {
+        self.header.width
     }
-    /// Get tag names
-    pub fn tags(&self) -> &[Tag] {
-        &self.tags
-    }
-    /// Get layer names
-    pub fn layers(&self) -> &[Layer] {
-        &self.layers
-    }
-    /// Get the image indices for a given tag and layer
-    pub fn frames(&self) -> &[Frame] {
-        &self.frames
-    }
-    /// Get image count
-    pub fn image_count(&self) -> usize {
-        self.images.len()
+
+    pub fn pixel_count(&self) -> usize {
+        self.header.width as usize * self.header.height as usize
     }
 }

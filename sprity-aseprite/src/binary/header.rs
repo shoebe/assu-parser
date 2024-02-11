@@ -100,7 +100,7 @@ pub fn parse_header(input: &[u8]) -> ParseResult<'_, Header> {
 #[test]
 #[allow(deprecated)]
 fn test_parse_header() {
-    let input = std::fs::read("./tests/default.aseprite").unwrap();
+    let input = std::fs::read("tests/aseprite_files/default.aseprite").unwrap();
     let (_, header) = parse_header(&input).unwrap();
     assert_eq!(
         header,
