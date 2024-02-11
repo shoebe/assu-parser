@@ -78,5 +78,12 @@ mod tests {
         assert!(file.frames[0].cells[1].user_data == "l2f1");
         assert!(file.frames[2].cells[0].user_data == "l1f3");
         assert!(file.frames[2].cells[2].user_data == "l3f3");
+
+        assert!(file.tags[0].name == "Tag 13");
+        assert!(file.tags[0].user_data == "t13");
+        assert!(file.tags[1].name == "Tag 12");
+        assert!(file.tags[1].user_data == "t12");
+        assert!(file.tags[2].name == "Tag 23");
+        assert!(file.tags[2].user_data == "t23");
     }
 }

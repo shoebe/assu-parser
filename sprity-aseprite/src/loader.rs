@@ -159,6 +159,12 @@ impl<'a> AsepriteFile<'a> {
                             CelContent::LinkedCel { frame_position } => {
                                 image_map[&(frame_position as usize, cel.layer_index)]
                             }
+                            CelContent::CompressedTilemap { .. } => {
+                                return Err(LoadSpriteError::Parse {
+                                    message: "CelContent::CompressedTilemap not implemented!"
+                                        .to_string(),
+                                });
+                            }
                             _ => {
                                 return Err(LoadSpriteError::Parse {
                                     message: "CelContent not Image or LinkedCel!".to_string(),
