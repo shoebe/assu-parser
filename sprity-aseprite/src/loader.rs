@@ -1,9 +1,8 @@
 use crate::binary::{
     chunk::Chunk,
     chunks::{
-        cel::CelContent, color_profile::ColorProfileChunk, slice::SliceChunk
+        cel::CelContent, color_profile::ColorProfileChunk,
     },
-    color_depth::ColorDepth,
     header::Header,
     image::Image,
     palette::Palette,
@@ -30,8 +29,8 @@ pub enum LoadSpriteError {
 pub struct AsepriteFile<'a> {
     pub header: Header,
     /// Used for indexed-to-RGB conversion
-    pub palette: Option<Palette>,
-    pub color_profile: Option<ColorProfileChunk<'a>>,
+    pub palette: Palette,
+    pub color_profile: ColorProfileChunk<'a>,
     /// All layers in the file in order
     pub layers: Vec<Layer<'a>>,
     /// All frames in the file in order
@@ -40,15 +39,22 @@ pub struct AsepriteFile<'a> {
     pub tags: Vec<Tag<'a>>,
     /// All images in the file
     pub images: Vec<Image<'a>>,
-    pub slices: Vec<SliceChunk<'a>>,
 }
 
 impl<'a> AsepriteFile<'a> {
-    fn init<'b: 'a>(&mut self, file: RawFile<'b>) -> Result<(), LoadSpriteError> {
+    fn new<'b: 'a>(file: RawFile<'b>) -> Result<Self, LoadSpriteError> {
+        let mut palette = None;
+        let mut color_profile = None;
+        let mut frames = Vec::with_capacity(file.frames.len());
+        let mut layers = Vec::new();
+        let mut images = Vec::new();
+        let mut tags = Vec::new();
+
+
         let mut image_map = ahash::HashMap::default();
 
         for raw_frame in file.frames.into_iter() {
-            self.frames.push(Frame {
+            frames.push(Frame {
                 duration: raw_frame.duration as u32,
                 cells: Default::default(),
             });
@@ -58,15 +64,25 @@ impl<'a> AsepriteFile<'a> {
                     Chunk::ColorProfile(profile) => {
                         // Seems to be either normal sRGB, fixed sRGB, or an embedded ICC profile
                         // Might want to use this info for the image making?
-                        self.color_profile = Some(profile);
+                        // This chunk should be in all aseprite files
+                        color_profile = Some(profile);
                     } 
                     Chunk::Palette(chunk) => {
-                        // this seems to always be present, is only used for indexed color mode though
-                        let mut palette = Palette::default();
-                        palette.colors[self.header.transparent_index as usize].alpha = 0;
+                        // this seems to always be present, we only need it for indexed color mode though
+                        // This chunk should be in all aseprite files
+                        let mut p = Palette::default();
                         for (entry, color_idx) in chunk.entries.iter().zip(chunk.indices.clone()) {
-                            palette.colors[color_idx as usize] = entry.color;
+                            p.colors[color_idx as usize] = entry.color;
                         }
+                        p.colors[file.header.transparent_index as usize].alpha = 0;
+                        if palette.is_some() {
+                            return Err(LoadSpriteError::Parse {
+                                message: "Aseprite file has 2 Palette chunks! Only 1 expected"
+                                    .to_string(),
+                            });
+                        }
+                        palette = Some(p);
+
                     } 
                     Chunk::Layer(chunk) => {
                         // In the first frame, should get all the layer chunks first, then all the actual data in the first frame (cells, etc.)
@@ -77,7 +93,7 @@ impl<'a> AsepriteFile<'a> {
                         } else {
                             Default::default()
                         };
-                        self.layers.push(Layer { chunk, user_data });
+                        layers.push(Layer { chunk, user_data });
                     }
                     Chunk::Cel(chunk) => {
                         let user_data = if let Some(Chunk::UserData(user_data)) =
@@ -90,10 +106,10 @@ impl<'a> AsepriteFile<'a> {
 
                         let image_index = match chunk.content {
                             CelContent::Image(image) => {
-                                let image_index = self.images.len();
-                                self.images.push(image);
+                                let image_index = images.len();
+                                images.push(image);
                                 image_map.insert(
-                                    (self.frames.len() - 1, chunk.layer_index),
+                                    (frames.len() - 1, chunk.layer_index),
                                     image_index,
                                 );
                                 image_index
@@ -113,14 +129,14 @@ impl<'a> AsepriteFile<'a> {
                                 });
                             }
                         };
-                        self.frames.last_mut().unwrap().cells.push(Cel {
+                        frames.last_mut().unwrap().cells.push(Cel {
                             chunk,
                             user_data,
                             image_index,
                         });
                     }                   
                     Chunk::Tags(tags_chunk) => {
-                        self.tags.extend(tags_chunk.tags.into_iter().map(|chunk| {
+                        tags.extend(tags_chunk.tags.into_iter().map(|chunk| {
                             let user_data = if let Some(Chunk::UserData(user_data)) =
                                 chunk_it.next_if(Chunk::is_user_data)
                             {
@@ -131,10 +147,10 @@ impl<'a> AsepriteFile<'a> {
                             Tag { chunk, user_data }
                         }))
                     }
-                    Chunk::Slice(slice) => self.slices.push(slice),
                     Chunk::Tileset(_) => {
                         todo!()
                     }
+                    Chunk::Slice(_) => (), // what are these for?
                     Chunk::ExternalFiles(_) => {} // Not sure in what situations external files are used
                     Chunk::UserData(_) => {} // we parse all of the ones we want in their respective sections
                     // Above might be useful
@@ -149,25 +165,28 @@ impl<'a> AsepriteFile<'a> {
             }
         }
 
-        Ok(())
+        Ok(Self {
+            header: file.header,
+            palette: palette.ok_or_else(|| LoadSpriteError::Parse {
+                message: "Palette chunk not found".to_string(),
+            })?,
+            color_profile: color_profile.ok_or_else(|| LoadSpriteError::Parse {
+                message: "Color profile chunk not found".to_string(),
+            })?,
+            layers,
+            frames,
+            tags,
+            images,
+        })
     }
 
     /// Load a aseprite file from a byte slice
-    pub fn load<'b: 'a>(data: &'b [u8]) -> Result<AsepriteFile<'a>, LoadSpriteError> {
+    pub fn from_bytes<'b: 'a>(data: &'b [u8]) -> Result<AsepriteFile<'a>, LoadSpriteError> {
         let raw_file = parse_raw_file(data).map_err(|e| LoadSpriteError::Parse {
             message: e.to_string(),
         })?;
-        let mut ase = Self {
-            header: raw_file.header,
-            palette: Default::default(),
-            color_profile: Default::default(),
-            layers: Default::default(),
-            frames: Default::default(),
-            tags: Default::default(),
-            images: Default::default(),
-            slices: Default::default(),
-        };
-        ase.init(raw_file)?;
+        
+        let ase = Self::new(raw_file)?;
         Ok(ase)
     }
 

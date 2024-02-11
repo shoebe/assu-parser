@@ -24,11 +24,11 @@ pub struct Header {
     /// Flags:
     ///   1 = Layer opacity has valid value
     pub flags: Dword,
-    /// Speed (milliseconds between frame, like in FLC files)
-    /// DEPRECATED: You should use the frame duration field
+    // Speed (milliseconds between frame, like in FLC files)
+    // DEPRECATED: You should use the frame duration field
     /// from each frame header
-    #[deprecated = "You should use the frame durations instead"]
-    pub speed: Word,
+    // Only used in the old format 
+    //pub speed: Word,
     /// Palette entry (index) which represent transparent color
     /// in all non-background layers (only for Indexed sprites).
     pub transparent_index: Byte,
@@ -60,6 +60,7 @@ pub fn parse_header(input: &[u8]) -> ParseResult<'_, Header> {
     let (input, color_depth) = parse_color_depth(input)?;
     let (input, flags) = dword(input)?;
     let (input, speed) = word(input)?;
+    let _ = speed;
     let (input, _) = tag([0u8; 4])(input)?;
     let (input, _) = tag([0u8; 4])(input)?;
     let (input, transparent_index) = byte(input)?;
@@ -84,7 +85,6 @@ pub fn parse_header(input: &[u8]) -> ParseResult<'_, Header> {
             height,
             color_depth,
             flags,
-            speed,
             transparent_index,
             color_count,
             pixel_width,
@@ -111,7 +111,6 @@ fn test_parse_header() {
             height: 32,
             color_depth: super::color_depth::ColorDepth::Rgba,
             flags: 1,
-            speed: 100,
             transparent_index: 0,
             color_count: 32,
             pixel_width: 1,

@@ -4,7 +4,7 @@ use sprity_aseprite::loader::AsepriteFile;
 fn test_cell() {
     let path = "tests/aseprite_files/combine.aseprite";
     let file = std::fs::read(path).unwrap();
-    let file = AsepriteFile::load(&file).unwrap();
+    let file = AsepriteFile::from_bytes(&file).unwrap();
 
     for (frame_i, frame) in file.frames.iter().enumerate() {
         for cel in frame.cells.iter() {
@@ -27,7 +27,7 @@ fn test_cell() {
 fn test_combine() {
     let path = "tests/aseprite_files/combine.aseprite";
     let file = std::fs::read(path).unwrap();
-    let file = AsepriteFile::load(&file).unwrap();
+    let file = AsepriteFile::from_bytes(&file).unwrap();
 
     for (index, _) in file.frames.iter().enumerate() {
         let img = file.combined_frame_image(index).unwrap();
@@ -48,7 +48,7 @@ fn test_combine() {
 fn test_linkedcells() {
     let path = "tests/aseprite_files/linkedcells.aseprite";
     let file = std::fs::read(path).unwrap();
-    let file = AsepriteFile::load(&file).unwrap();
+    let file = AsepriteFile::from_bytes(&file).unwrap();
 
     for (index, _) in file.frames.iter().enumerate() {
         let img = file.combined_frame_image(index).unwrap();
@@ -69,7 +69,7 @@ fn test_linkedcells() {
 fn test_userdata() {
     let path = "tests/aseprite_files/userdata.aseprite";
     let file = std::fs::read(path).unwrap();
-    let file = AsepriteFile::load(&file).unwrap();
+    let file = AsepriteFile::from_bytes(&file).unwrap();
 
     assert!(file.layers[0].user_data.text.unwrap() == "l1");
     assert!(file.layers[1].user_data.text.unwrap() == "l2");

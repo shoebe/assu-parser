@@ -83,7 +83,7 @@ pub fn parse_layer_chunk(input: &[u8]) -> ParseResult<'_, LayerChunk<'_>> {
 fn test_layers() {
     use crate::loader::AsepriteFile;
     let input = std::fs::read("tests/aseprite_files/layers.aseprite").unwrap();
-    let file = AsepriteFile::load(&input).unwrap();
+    let file = AsepriteFile::from_bytes(&input).unwrap();
     assert_eq!(file.frames.len(), 1);
     assert_eq!(file.frames[0].duration, 100);
     assert_eq!(file.layers.len(), 3);

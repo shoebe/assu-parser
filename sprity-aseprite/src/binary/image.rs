@@ -12,6 +12,7 @@ pub struct Image<'a> {
     /// "Raw Cel" data compressed with ZLIB method (see NOTE.3)
     pub data: &'a [u8],
     /// True if the cel data is compressed
+    /// Generally you'll not find uncompressed images in .aseprite files (only in very old .aseprite files). (from ase doc)
     pub compressed: bool,
 }
 

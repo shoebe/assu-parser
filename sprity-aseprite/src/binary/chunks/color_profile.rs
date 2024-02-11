@@ -10,7 +10,7 @@ use crate::binary::{
     scalars::{dword, fixed, word, Fixed, Word},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ColorProfileChunk<'a> {
     pub fixed_gamma: Option<Fixed>,
     pub profile: ColorProfile<'a>,
@@ -30,8 +30,9 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum ColorProfile<'a> {
+    #[default] 
     NoColorProfile,
     Srgb,
     EmbeddedICC(&'a [u8]),
