@@ -9,6 +9,7 @@ use crate::binary::{
 };
 
 #[derive(Debug)]
+/// After the tags chunk, you can write one user data chunk for each tag. E.g. if there are 10 tags, you can then write 10 user data chunks one for each tag.
 pub struct TagsChunk<'a> {
     pub tags: Vec<Tag<'a>>,
 }

@@ -6,6 +6,7 @@ use crate::binary::{
 };
 
 #[derive(Debug)]
+/// DEPRECATED
 pub struct MaskChunk<'a> {
     /// X position
     pub x: Short,

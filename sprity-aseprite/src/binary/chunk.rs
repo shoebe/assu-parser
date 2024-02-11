@@ -30,7 +30,7 @@ pub enum Chunk<'a> {
     ColorProfile(ColorProfileChunk<'a>),
     ExternalFiles(ExternalFilesChunk<'a>),
     Mask(MaskChunk<'a>),
-    Path,
+    Path, // Never used.
     Tags(TagsChunk<'a>),
     Palette(PaletteChunk<'a>),
     UserData(UserDataChunk<'a>),

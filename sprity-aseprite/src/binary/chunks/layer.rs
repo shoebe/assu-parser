@@ -8,6 +8,7 @@ use crate::binary::{
 };
 
 #[derive(Debug)]
+/// In the first frame should be a set of layer chunks to determine the entire layers layout:
 pub struct LayerChunk<'a> {
     pub flags: LayerFlags,
     pub layer_type: LayerType,

@@ -8,6 +8,7 @@ use crate::binary::{
 };
 
 #[derive(Debug)]
+/// This chunk determine where to put a cel in the specified layer/frame.
 pub struct CelChunk<'a> {
     /// Layer index (see NOTE.2)
     pub layer_index: Word,

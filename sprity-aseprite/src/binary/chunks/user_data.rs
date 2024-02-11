@@ -27,6 +27,17 @@ bitflags! {
 }
 
 #[derive(Debug)]
+/// Specifies the user data (color/text/properties) to be associated with the last read chunk/object.
+/// E.g. If the last chunk we've read is a layer and then this chunk appears, this user data belongs to that layer,
+/// if we've read a cel, it belongs to that cel, etc. There are some special cases:
+///   1. After a Tags chunk, there will be several user data chunks, one for each tag, you should associate the user
+///      data in the same order as the tags are in the Tags chunk.
+///   2. After the Tileset chunk, it could be followed by a user data chunk (empty or not) and then all the
+///      user data chunks of the tiles ordered by tile index, or it could be followed by none user data chunk
+///      (if the file was created in an older Aseprite version of if no tile has user data).
+///   3. In Aseprite v1.3 a sprite has associated user data, to consider this case there is an User Data
+///      Chunk at the first frame after the Palette Chunk.
+
 pub struct UserDataChunk<'a> {
     pub text: Option<&'a str>,
     pub color: Option<Color>,
