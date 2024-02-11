@@ -21,6 +21,7 @@ strum_macros = "0.25"
 thiserror = "1.0"
 is-macro = "0.3.5"
 rgb = "0.8.37"
+ahash = "0.8.8"
 
 [dev-dependencies]
 lodepng = "3.10.1"
