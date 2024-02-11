@@ -1,14 +1,12 @@
 use std::{collections::HashMap, ops::Range};
 
 use flate2::Decompress;
-use itertools::Itertools;
 
 use crate::binary::{
     blend_mode::BlendMode,
     chunk::Chunk,
-    chunk_type::ChunkType,
     chunks::{
-        cel::{CelChunk, CelContent},
+        cel::CelContent,
         layer::{LayerFlags, LayerType},
         slice::SliceChunk,
         tags::AnimationDirection,
@@ -102,6 +100,8 @@ impl<'a> AsepriteFile<'a> {
             _ => None,
         };
 
+        let mut image_map = HashMap::new();
+
         for raw_frame in file.frames.into_iter() {
             self.frames.push(Frame {
                 duration: raw_frame.duration,
@@ -147,21 +147,32 @@ impl<'a> AsepriteFile<'a> {
                         } else {
                             Default::default()
                         };
-                        match cel.content {
+
+                        let image_index = match cel.content {
                             CelContent::Image(image) => {
                                 let image_index = self.images.len();
                                 self.images.push(image.clone());
-                                self.frames.last_mut().unwrap().cells.push(FrameCell {
-                                    origin: (cel.x, cel.y),
-                                    size: (image.width, image.height),
-                                    layer_index: cel.layer_index.into(),
-                                    image_index,
-                                    user_data,
+                                image_map
+                                    .insert((self.frames.len() - 1, cel.layer_index), image_index);
+                                image_index
+                            }
+                            CelContent::LinkedCel { frame_position } => {
+                                image_map[&(frame_position as usize, cel.layer_index)]
+                            }
+                            _ => {
+                                return Err(LoadSpriteError::Parse {
+                                    message: "CelContent not Image or LinkedCel!".to_string(),
                                 });
                             }
-                            CelContent::LinkedCel { frame_position } => todo!(),
-                            _ => (),
-                        }
+                        };
+                        let im = &self.images[image_index];
+                        self.frames.last_mut().unwrap().cells.push(FrameCell {
+                            origin: (cel.x, cel.y),
+                            size: (im.width, im.height),
+                            layer_index: cel.layer_index as usize,
+                            image_index,
+                            user_data,
+                        });
                     }
                     Chunk::CelExtra(_) => {}
                     Chunk::ColorProfile(_) => {}
@@ -191,7 +202,7 @@ impl<'a> AsepriteFile<'a> {
                         }))
                     }
                     Chunk::Palette(_) => {}
-                    Chunk::UserData(user_data) => {}
+                    Chunk::UserData(_) => {}
                     Chunk::Slice(slice) => self.slices.push(slice),
                     Chunk::Tileset(_) => {
                         todo!()
@@ -244,8 +255,7 @@ impl<'a> AsepriteFile<'a> {
     ) -> Result<u64, LoadImageError> {
         let mut hash = 0u64;
 
-        let target_size =
-            usize::from(usize::from(self.header.width) * usize::from(self.header.height)) * 4;
+        let target_size = self.header.width as usize * self.header.height as usize * 4;
 
         if target.len() < target_size {
             return Err(LoadImageError::TargetBufferTooSmall);
@@ -255,7 +265,7 @@ impl<'a> AsepriteFile<'a> {
 
         for cell in frame.cells.iter() {
             let layer = &self.layers[cell.layer_index];
-            if layer.visible == false {
+            if !layer.visible {
                 continue;
             }
 

@@ -17,7 +17,7 @@
     unused_labels,
     unused_lifetimes,
     unused_qualifications,
-    unused_results
+    //unused_results
 )]
 #![allow(clippy::uninlined_format_args)]
 

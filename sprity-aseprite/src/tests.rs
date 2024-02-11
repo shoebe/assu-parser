@@ -47,6 +47,23 @@ mod tests {
     }
 
     #[test]
+    fn test_linkedcells() {
+        let path = "tests/linkedcells.aseprite";
+        let file = std::fs::read(path).unwrap();
+        let file = AsepriteFile::load(&file).unwrap();
+
+        let (width, height) = file.size();
+        for (index, _) in file.frames().iter().enumerate() {
+            let mut target = vec![0; usize::from(width * height) * 4];
+            let _ = file.combined_frame_image(index, &mut target).unwrap();
+            let image = RgbaImage::from_raw(u32::from(width), u32::from(height), target).unwrap();
+            std::fs::create_dir_all("out").unwrap();
+            let path = format!("out/linkedcells_{}.png", index);
+            image.save(path).unwrap();
+        }
+    }
+
+    #[test]
     fn test_userdata() {
         let path = "tests/userdata.aseprite";
         let file = std::fs::read(path).unwrap();
