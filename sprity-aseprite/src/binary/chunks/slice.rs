@@ -3,7 +3,7 @@ use nom::{combinator::cond, multi::count};
 
 use crate::binary::{
     errors::ParseResult,
-    scalars::{dword, long, parse_dword_as_usize, parse_string, Dword, Long},
+    scalars::{dword, long, parse_string, Dword, Long},
 };
 
 #[derive(Debug)]
@@ -47,12 +47,12 @@ pub struct Pivot {
 }
 
 pub fn parse_slice_chunk(input: &[u8]) -> ParseResult<'_, SliceChunk<'_>> {
-    let (input, number_of_keys) = parse_dword_as_usize(input)?;
+    let (input, number_of_keys) = dword(input)?;
     let (input, flags) = dword(input)?;
     let flags = SliceFlags::from_bits_truncate(flags);
     let (input, _) = dword(input)?;
     let (input, name) = parse_string(input)?;
-    let (input, slice_keys) = count(|input| parse_slice_key(input, flags), number_of_keys)(input)?;
+    let (input, slice_keys) = count(|input| parse_slice_key(input, flags), number_of_keys as usize)(input)?;
     Ok((
         input,
         SliceChunk {

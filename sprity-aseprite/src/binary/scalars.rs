@@ -117,20 +117,6 @@ pub fn dword_size<'a>(input: &'a [u8], f: fn(Dword) -> ParseError<'a>) -> ParseR
     }
 }
 
-pub fn parse_dword_as_usize(input: &[u8]) -> ParseResult<'_, usize> {
-    let (input, size) = dword(input)?;
-    let size = size
-        .try_into()
-        .map_err(|_| nom::Err::Failure(ParseError::DwordToUsize(size)))?;
-    Ok((input, size))
-}
-
-pub fn parse_dword_as_u8<'a>(input: &'a [u8], e: ParseError<'a>) -> ParseResult<'a, u8> {
-    let (input, size) = dword(input)?;
-    let size = size.try_into().map_err(|_| nom::Err::Failure(e))?;
-    Ok((input, size))
-}
-
 pub fn parse_string(input: &[u8]) -> ParseResult<'_, &str> {
     map_res(flat_map(word, take), std::str::from_utf8)(input)
 }

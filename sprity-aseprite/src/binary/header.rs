@@ -26,7 +26,7 @@ pub struct Header {
     pub flags: Dword,
     // Speed (milliseconds between frame, like in FLC files)
     // DEPRECATED: You should use the frame duration field
-    /// from each frame header
+    // from each frame header
     // Only used in the old format 
     //pub speed: Word,
     /// Palette entry (index) which represent transparent color

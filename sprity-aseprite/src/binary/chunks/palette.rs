@@ -1,19 +1,19 @@
 use std::ops::Range;
 
 use bitflags::bitflags;
-use nom::{bytes::complete::take, combinator::cond, multi::count};
+use nom::{bytes::complete::take, combinator::{cond, verify}, multi::count};
 
 use crate::binary::{
     errors::{ParseError, ParseResult},
     palette::PaletteError,
     scalars::{
-        parse_color, parse_dword_as_u8, parse_dword_as_usize, parse_string, word, Color, Word,
+        dword, parse_color, parse_string, word, Color, Word
     },
 };
 
 #[derive(Debug)]
 pub struct PaletteChunk<'a> {
-    pub indices: Range<u8>,
+    pub first_index: u32,
     pub entries: Vec<PaletteEntry<'a>>,
 }
 
@@ -30,26 +30,21 @@ bitflags! {
 }
 
 pub fn parse_palette_chunk(input: &[u8]) -> ParseResult<'_, PaletteChunk<'_>> {
-    let (input, palette_size) = parse_dword_as_usize(input)?;
-    let (input, first_color_index) = parse_dword_as_u8(
-        input,
-        ParseError::PaletteError(PaletteError::FirstColorIndexOutOfBounds),
-    )?;
-    let (input, last_color_index) = parse_dword_as_u8(
-        input,
-        ParseError::PaletteError(PaletteError::LastColorIndexOutOfBounds),
-    )?;
-    if first_color_index > last_color_index {
-        return Err(nom::Err::Failure(ParseError::PaletteError(
-            PaletteError::FirstColorIndexGreaterThanLastColorIndex,
-        )));
-    }
+    let (input, palette_size) = dword(input)?;
+    let (input, first_color_index) = verify(dword, |s| *s < palette_size)(input)?;
+    let (input, _) = verify(
+        dword, 
+        |&last_ind| {
+            last_ind <= palette_size && last_ind >= first_color_index && last_ind - first_color_index + 1 == palette_size
+        }
+    )(input)?;
+
     let (input, _) = take(8usize)(input)?;
-    let (input, entries) = count(parse_palette_entry, palette_size)(input)?;
+    let (input, entries) = count(parse_palette_entry, palette_size as usize)(input)?;
     Ok((
         input,
         PaletteChunk {
-            indices: (first_color_index..last_color_index + 1),
+            first_index: first_color_index,
             entries,
         },
     ))
@@ -62,3 +57,4 @@ pub fn parse_palette_entry(input: &[u8]) -> ParseResult<'_, PaletteEntry<'_>> {
     let (input, name) = cond(flags.contains(PaletteEntryFlags::HAS_NAME), parse_string)(input)?;
     Ok((input, PaletteEntry { color, name }))
 }
+

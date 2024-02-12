@@ -1,7 +1,7 @@
 use crate::binary::{
     chunk::Chunk,
     chunks::{
-        cel::CelContent, color_profile::ColorProfileChunk,
+        cel::CelContent, color_profile::ColorProfileChunk, tileset::TilesetChunk,
     },
     header::Header,
     image::Image,
@@ -11,6 +11,7 @@ use crate::binary::{
 
 use crate::wrappers::*;
 
+use rgb::{Zeroable, RGBA8};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -39,16 +40,18 @@ pub struct AsepriteFile<'a> {
     pub tags: Vec<Tag<'a>>,
     /// All images in the file
     pub images: Vec<Image<'a>>,
+    pub tilesets: Vec<TilesetChunk<'a>>,
 }
 
 impl<'a> AsepriteFile<'a> {
     fn new<'b: 'a>(file: RawFile<'b>) -> Result<Self, LoadSpriteError> {
-        let mut palette = None;
         let mut color_profile = None;
+        let mut palette = Palette::default();
         let mut frames = Vec::with_capacity(file.frames.len());
         let mut layers = Vec::new();
         let mut images = Vec::new();
         let mut tags = Vec::new();
+        let mut tilesets = Vec::new();
 
 
         let mut image_map = ahash::HashMap::default();
@@ -61,6 +64,7 @@ impl<'a> AsepriteFile<'a> {
             let mut chunk_it = raw_frame.chunks.into_iter().peekable();
             while let Some(chunk) = chunk_it.next() {
                 match chunk {
+                    // Should get the chunks below in the first frame
                     Chunk::ColorProfile(profile) => {
                         // Seems to be either normal sRGB, fixed sRGB, or an embedded ICC profile
                         // Might want to use this info for the image making?
@@ -68,21 +72,22 @@ impl<'a> AsepriteFile<'a> {
                         color_profile = Some(profile);
                     } 
                     Chunk::Palette(chunk) => {
-                        // this seems to always be present, we only need it for indexed color mode though
-                        // This chunk should be in all aseprite files
-                        let mut p = Palette::default();
-                        for (entry, color_idx) in chunk.entries.iter().zip(chunk.indices.clone()) {
-                            p.colors[color_idx as usize] = entry.color;
+                        // This seems to always be present, only needed for indexed color mode though
+                        // documentation says: 
+                        //    "Color palettes are in FLI color chunks (it could be type=11 or type=4). For color depths more than 8bpp, palettes are optional."
+                        //    Guessing type=11/4 is referring to the old palette chunks? This one is 0x2019
+                        let req_len = chunk.first_index as usize + chunk.entries.len();
+                        if palette.colors.len() < req_len {
+                            palette.colors.resize(req_len, RGBA8::zeroed());
                         }
-                        p.colors[file.header.transparent_index as usize].alpha = 0;
-                        if palette.is_some() {
-                            return Err(LoadSpriteError::Parse {
-                                message: "Aseprite file has 2 Palette chunks! Only 1 expected"
-                                    .to_string(),
-                            });
-                        }
-                        palette = Some(p);
 
+                        for (idx, entry) in chunk.entries.iter().enumerate() {
+                            let c = &mut palette.colors[chunk.first_index as usize + idx]; 
+                            c.r = entry.color.red;
+                            c.g = entry.color.green;
+                            c.b = entry.color.blue;
+                            c.a = entry.color.alpha;
+                        }
                     } 
                     Chunk::Layer(chunk) => {
                         // In the first frame, should get all the layer chunks first, then all the actual data in the first frame (cells, etc.)
@@ -95,6 +100,10 @@ impl<'a> AsepriteFile<'a> {
                         };
                         layers.push(Layer { chunk, user_data });
                     }
+                    Chunk::Tileset(t) => {
+                        tilesets.push(t);
+                    }
+                    // Everything below shows up after the above in the first frame, or in any frame after
                     Chunk::Cel(chunk) => {
                         let user_data = if let Some(Chunk::UserData(user_data)) =
                             chunk_it.next_if(Chunk::is_user_data)
@@ -118,14 +127,14 @@ impl<'a> AsepriteFile<'a> {
                                 image_map[&(frame_position as usize, chunk.layer_index)]
                             }
                             CelContent::CompressedTilemap { .. } => {
-                                return Err(LoadSpriteError::Parse {
-                                    message: "CelContent::CompressedTilemap not implemented!"
-                                        .to_string(),
-                                });
+                                // "data" has all the tiles. A "tile" is a "bits_per_tile" bitmask, apparently always 32-bit right now.
+                                // & it with "bitmask_tile_id" to get the tile id, etc. for flips
+                                // To get the associated tileset -> get layer of cel -> layer should have "tileset index" -> index tilesets gotten in first frame
+                                todo!()
                             }
-                            _ => {
+                            CelContent::Unknown(_) => {
                                 return Err(LoadSpriteError::Parse {
-                                    message: "CelContent not Image or LinkedCel!".to_string(),
+                                    message: "CelContent has unknown type!".to_string(),
                                 });
                             }
                         };
@@ -147,9 +156,7 @@ impl<'a> AsepriteFile<'a> {
                             Tag { chunk, user_data }
                         }))
                     }
-                    Chunk::Tileset(_) => {
-                        todo!()
-                    }
+                    // below aren't needed for current functionality
                     Chunk::Slice(_) => (), // what are these for?
                     Chunk::ExternalFiles(_) => {} // Not sure in what situations external files are used
                     Chunk::UserData(_) => {} // we parse all of the ones we want in their respective sections
@@ -167,16 +174,15 @@ impl<'a> AsepriteFile<'a> {
 
         Ok(Self {
             header: file.header,
-            palette: palette.ok_or_else(|| LoadSpriteError::Parse {
-                message: "Palette chunk not found".to_string(),
-            })?,
             color_profile: color_profile.ok_or_else(|| LoadSpriteError::Parse {
                 message: "Color profile chunk not found".to_string(),
             })?,
+            palette,
             layers,
             frames,
             tags,
             images,
+            tilesets
         })
     }
 

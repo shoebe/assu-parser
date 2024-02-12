@@ -1,18 +1,11 @@
+use rgb::RGBA8;
 use thiserror::Error;
 
 use super::scalars::Color;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Palette {
-    pub colors: [Color; 256],
-}
-
-impl Default for Palette {
-    fn default() -> Self {
-        Palette {
-            colors: [Color::default(); 256],
-        }
-    }
+    pub colors: Vec<RGBA8>,
 }
 
 #[derive(Debug, Copy, Clone, Error)]

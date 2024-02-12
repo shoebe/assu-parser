@@ -5,13 +5,10 @@ use nom::{
 };
 
 use super::{
-    chunk::parse_chunks,
-    chunk::Chunk,
+    chunk::{parse_chunks, Chunk},
     chunks::cel::CelChunk,
     errors::{ParseError, ParseResult},
-    scalars::dword_size,
-    scalars::Word,
-    scalars::{parse_dword_as_usize, word},
+    scalars::{dword, dword_size, word, Word},
 };
 
 #[derive(Debug)]
@@ -46,10 +43,7 @@ pub fn parse_rawframe(input: &[u8]) -> ParseResult<'_, RawFrame<'_>> {
     let (input, chunk_count) = word(input)?;
     let (input, duration) = word(input)?;
     let (input, _) = take(2usize)(input)?;
-    let (input, chunk_count) = match parse_dword_as_usize(input)? {
-        (input, 0) => (input, chunk_count.into()),
-        (input, chunk_count) => (input, chunk_count),
-    };
-    let (_, chunks) = parse_chunks(input, chunk_count)?;
+    let (input, chunk_count) = dword(input)?;
+    let (_, chunks) = parse_chunks(input, chunk_count as usize)?;
     Ok((rest, RawFrame { duration, chunks }))
 }

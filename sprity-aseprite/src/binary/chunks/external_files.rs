@@ -3,7 +3,7 @@ use strum_macros::FromRepr;
 
 use crate::binary::{
     errors::ParseResult,
-    scalars::{byte, dword, parse_dword_as_usize, parse_string, Byte, Dword},
+    scalars::{byte, dword, parse_string, Byte, Dword},
 };
 
 /// A list of external files linked with this file. It might be used to
@@ -39,9 +39,9 @@ impl From<Byte> for ExternalFileType {
 }
 
 pub fn parse_external_files_chunk(input: &[u8]) -> ParseResult<'_, ExternalFilesChunk<'_>> {
-    let (input, number_of_entries) = parse_dword_as_usize(input)?;
+    let (input, number_of_entries) = dword(input)?;
     let (input, _) = take(8usize)(input)?;
-    let (input, files) = count(parse_external_file, number_of_entries)(input)?;
+    let (input, files) = count(parse_external_file, number_of_entries as usize)(input)?;
     Ok((input, ExternalFilesChunk { files }))
 }
 

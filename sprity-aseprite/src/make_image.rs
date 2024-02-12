@@ -55,11 +55,7 @@ fn indexed_to_rgba(
     }
     let pixels = target.as_rgba_mut();
     for (i, px) in source.iter().enumerate() {
-        let color = palette.colors[*px as usize];
-        pixels[i].r = color.red;
-        pixels[i].g = color.green;
-        pixels[i].b = color.blue;
-        pixels[i].a = color.alpha;
+        pixels[i] = palette.colors[*px as usize];
     }
     Ok(())
 }

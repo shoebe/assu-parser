@@ -12,7 +12,7 @@ use strum_macros::FromRepr;
 use crate::binary::{
     errors::{ParseError, ParseResult},
     scalars::{
-        byte, dword, fixed, parse_color, parse_dword_as_usize, parse_point, parse_rect, parse_size,
+        byte, dword, fixed, parse_color, parse_point, parse_rect, parse_size,
         parse_string, parse_uuid, word, Color, Double, Dword, Fixed, Float, Point, Rect, Size,
         Uuid,
     },
@@ -150,17 +150,17 @@ pub fn parse_user_data_chunk(input: &[u8]) -> ParseResult<'_, UserDataChunk<'_>>
 pub fn parse_properties_maps(
     input: &[u8],
 ) -> ParseResult<'_, ParseResult<'_, Vec<PropertiesMap<'_>>>> {
-    let (input, size_maps) = parse_dword_as_usize(input)?;
-    let (input, num_maps) = parse_dword_as_usize(input)?;
+    let (input, size_maps) = dword(input)?;
+    let (input, num_maps) = dword(input)?;
     // FIXME handle underflows
     let (input, input_maps) = take(size_maps - 4)(input)?;
-    Ok((input, count(parse_properties_map, num_maps)(input_maps)))
+    Ok((input, count(parse_properties_map, num_maps as usize)(input_maps)))
 }
 
 pub fn parse_properties_map(input: &[u8]) -> ParseResult<'_, PropertiesMap<'_>> {
     let (input, extension_entry_id) = dword(input)?;
-    let (input, num_props) = parse_dword_as_usize(input)?;
-    let (input, properties) = count(parse_property, num_props)(input)?;
+    let (input, num_props) = dword(input)?;
+    let (input, properties) = count(parse_property, num_props as usize)(input)?;
     Ok((
         input,
         PropertiesMap {
@@ -205,7 +205,9 @@ pub fn parse_value(input: &[u8]) -> ParseResult<'_, Value<'_>> {
 }
 
 pub fn parse_vector(input: &[u8]) -> ParseResult<'_, Vector<'_>> {
-    let (input, len_elements) = parse_dword_as_usize(input)?;
+    let (input, len_elements) = dword(input)?;
+    let len_elements = len_elements as usize;
+    
     let (input, prop_type) = word(input)?;
     if prop_type == 0 {
         return map(count(parse_value, len_elements), Vector::Mixed)(input);
