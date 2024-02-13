@@ -1,17 +1,14 @@
+use std::{borrow::Cow, mem::zeroed};
+
 use crate::binary::{
-    chunk::Chunk,
-    chunks::{
+    chunk::Chunk, chunks::{
         cel::CelContent, color_profile::ColorProfileChunk, tileset::TilesetChunk,
-    },
-    header::Header,
-    image::Image,
-    palette::Palette,
-    raw_file::{parse_raw_file, RawFile},
+    }, color_depth::ColorDepth, header::Header, image::Image, palette::Palette, raw_file::{parse_raw_file, RawFile}
 };
 
 use crate::wrappers::*;
 
-use rgb::{Zeroable, RGBA8};
+use itertools::Itertools;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -40,6 +37,7 @@ pub struct AsepriteFile<'a> {
     pub tags: Vec<Tag<'a>>,
     /// All images in the file
     pub images: Vec<Image<'a>>,
+    pub images_decompressed: Vec<image::RgbaImage>,
     pub tilesets: Vec<TilesetChunk<'a>>,
 }
 
@@ -78,15 +76,12 @@ impl<'a> AsepriteFile<'a> {
                         //    Guessing type=11/4 is referring to the old palette chunks? This one is 0x2019
                         let req_len = chunk.first_index as usize + chunk.entries.len();
                         if palette.colors.len() < req_len {
-                            palette.colors.resize(req_len, RGBA8::zeroed());
+                            palette.colors.resize(req_len, image::Rgba::<u8>::zeroed());
                         }
 
                         for (idx, entry) in chunk.entries.iter().enumerate() {
                             let c = &mut palette.colors[chunk.first_index as usize + idx]; 
-                            c.r = entry.color.red;
-                            c.g = entry.color.green;
-                            c.b = entry.color.blue;
-                            c.a = entry.color.alpha;
+                            c.0 = [entry.color.red, entry.color.green, entry.color.blue, entry.color.alpha];
                         }
                     } 
                     Chunk::Layer(chunk) => {
@@ -172,6 +167,38 @@ impl<'a> AsepriteFile<'a> {
             }
         }
 
+        if file.header.color_depth != ColorDepth::Rgba {
+            return Err(LoadSpriteError::Parse {
+                message: format!("Expecting color depth to be Rgba, not {:?}", file.header.color_depth),
+            })
+        }
+
+        let mut decompressor = flate2::Decompress::new(true);
+        let images_decompressed: Result<Vec<_>, _> = images.iter().map(|image| {
+            let img = if image.compressed {
+                // Pretty sure the images are always compressed
+                //let mut buf = vec![0; image.pixel_count() * 4];
+                let mut buf = image::RgbaImage::new(image.width as u32, image.height as u32);
+                decompressor.reset(true);
+                decompressor.decompress(image.data, &mut buf, flate2::FlushDecompress::Finish)
+                    .map_err(|e| 
+                        LoadSpriteError::Parse {
+                            message: format!("failed to decompress: {e}"),
+                        }
+                    )?;
+                buf
+            } else {
+                image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.data.to_owned())
+                    .ok_or_else(|| LoadSpriteError::Parse {
+                        message: format!("image::RgbaImage::from_raw error"),
+                    })?
+            };
+
+            Ok(img)
+        }).collect();
+
+        let images_decompressed = images_decompressed?;
+
         Ok(Self {
             header: file.header,
             color_profile: color_profile.ok_or_else(|| LoadSpriteError::Parse {
@@ -182,6 +209,7 @@ impl<'a> AsepriteFile<'a> {
             frames,
             tags,
             images,
+            images_decompressed,
             tilesets
         })
     }

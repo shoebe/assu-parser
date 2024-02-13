@@ -1,4 +1,4 @@
-use std::ops::RangeBounds;
+use std::{borrow::Cow, ops::RangeBounds};
 
 use crate::binary::chunks::{cel::CelChunk, layer::{LayerChunk, LayerFlags}, tags::TagChunk, user_data::UserDataChunk};
 
@@ -14,11 +14,11 @@ impl Cel<'_> {
     pub fn layer_index(&self) -> usize {
         self.chunk.layer_index as usize
     }
-    pub fn x(&self) -> usize {
-        self.chunk.x as usize
+    pub fn x(&self) -> u32 {
+        self.chunk.x as u32
     }
-    pub fn y(&self) -> usize {
-        self.chunk.y as usize
+    pub fn y(&self) -> u32 {
+        self.chunk.y as u32
     }
     pub fn z_index(&self) -> i16 {
         self.chunk.z_index
@@ -75,4 +75,35 @@ impl Layer<'_> {
     pub fn visible(&self) -> bool {
         self.chunk.flags.contains(LayerFlags::VISIBLE)
     }
+}
+
+pub trait PixelExt {
+    fn r(&self) -> u8;
+    fn b(&self) -> u8;
+    fn g(&self) -> u8;
+    fn a(&self) -> u8;
+    fn zeroed() -> Self;
+}
+
+impl PixelExt for image::Rgba<u8> {
+    fn r(&self) -> u8 {
+        self.0[0]
+    }
+
+    fn b(&self) -> u8 {
+        self.0[1]
+    }
+
+    fn g(&self) -> u8 {
+        self.0[2]
+    }
+
+    fn a(&self) -> u8 {
+        self.0[3]
+    }
+
+    fn zeroed() -> Self {
+        Self([0;4])
+    }
+    
 }

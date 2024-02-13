@@ -1,11 +1,10 @@
-use rgb::RGBA8;
 use thiserror::Error;
 
 use super::scalars::Color;
 
 #[derive(Debug, Default)]
 pub struct Palette {
-    pub colors: Vec<RGBA8>,
+    pub colors: Vec<image::Rgba<u8>>,
 }
 
 #[derive(Debug, Copy, Clone, Error)]

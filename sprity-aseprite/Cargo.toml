@@ -20,8 +20,6 @@ strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
 is-macro = "0.3.5"
-rgb = "0.8.37"
 ahash = "0.8.8"
+image = { version = "0.24.8", default-features = false, features = ["png"] }
 
-[dev-dependencies]
-lodepng = "3.10.1"

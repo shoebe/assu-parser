@@ -8,17 +8,16 @@ fn test_cell() {
 
     for (frame_i, frame) in file.frames.iter().enumerate() {
         for cel in frame.cells.iter() {
-            let img = file.load_image(cel.image_index).unwrap();
+            let img = &file.images_decompressed[cel.image_index];
 
             std::fs::create_dir_all("tests/generated_pngs").unwrap();
             let path = format!("tests/generated_pngs/cell_f{frame_i}c{}.png", cel.layer_index());
-            lodepng::encode32_file(path, &img.pixels, img.width, img.height).unwrap();
+            img.save_with_format(path, image::ImageFormat::Png).unwrap();
 
             let expected_path = format!("tests/expected_pngs/cell_f{frame_i}c{}.png", cel.layer_index());
-            let expected = lodepng::decode32_file(expected_path).unwrap();
-            assert_eq!(expected.height, img.height);
-            assert_eq!(expected.width, img.width);
-            assert_eq!(expected.buffer, img.pixels);
+            let expected = image::io::Reader::open(expected_path).unwrap().decode().unwrap();
+            let expected_rgba = expected.as_rgba8().unwrap();
+            assert_eq!(expected_rgba, img);
         }
     }
 }
@@ -34,13 +33,12 @@ fn test_combine() {
 
         std::fs::create_dir_all("tests/generated_pngs").unwrap();
         let path = format!("tests/generated_pngs/combined_{}.png", index);
-        lodepng::encode32_file(path, &img.pixels, img.width, img.height).unwrap();
+        img.save_with_format(path, image::ImageFormat::Png).unwrap();
         
         let expected_path = format!("tests/expected_pngs/combined_{}.png", index);
-        let expected = lodepng::decode32_file(expected_path).unwrap();
-        assert_eq!(expected.height, img.height);
-        assert_eq!(expected.width, img.width);
-        assert_eq!(expected.buffer, img.pixels);
+        let expected = image::io::Reader::open(expected_path).unwrap().decode().unwrap();
+        let expected_rgba = expected.as_rgba8().unwrap();
+        assert_eq!(expected_rgba, &img);
     }
 }
 
@@ -55,13 +53,12 @@ fn test_linkedcells() {
 
         std::fs::create_dir_all("tests/generated_pngs").unwrap();
         let path = format!("tests/generated_pngs/linkedcells_{}.png", index);
-        lodepng::encode32_file(path, &img.pixels, img.width, img.height).unwrap();
+        img.save_with_format(path, image::ImageFormat::Png).unwrap();
 
         let expected_path = format!("tests/expected_pngs/linkedcells_{}.png", index);
-        let expected = lodepng::decode32_file(expected_path).unwrap();
-        assert_eq!(expected.height, img.height);
-        assert_eq!(expected.width, img.width);
-        assert_eq!(expected.buffer, img.pixels);
+        let expected = image::io::Reader::open(expected_path).unwrap().decode().unwrap();
+        let expected_rgba = expected.as_rgba8().unwrap();
+        assert_eq!(expected_rgba, &img);
     }
 }
 
