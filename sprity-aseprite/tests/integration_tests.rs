@@ -43,6 +43,26 @@ fn test_combine() {
 }
 
 #[test]
+fn test_combine_cropped() {
+    let path = "tests/aseprite_files/combine.aseprite";
+    let file = std::fs::read(path).unwrap();
+    let file = AsepriteFile::from_bytes(&file).unwrap();
+
+    for (index, _) in file.frames.iter().enumerate() {
+        let img = file.combined_frame_image_cropped(index).unwrap();
+
+        std::fs::create_dir_all("tests/generated_pngs").unwrap();
+        let path = format!("tests/generated_pngs/combined_cropped_{}.png", index);
+        img.img.save_with_format(path, image::ImageFormat::Png).unwrap();
+        
+        let expected_path = format!("tests/expected_pngs/combined_cropped_{}.png", index);
+        let expected = image::io::Reader::open(expected_path).unwrap().decode().unwrap();
+        let expected_rgba = expected.as_rgba8().unwrap();
+        assert_eq!(expected_rgba, &img.img);
+    }
+}
+
+#[test]
 fn test_linkedcells() {
     let path = "tests/aseprite_files/linkedcells.aseprite";
     let file = std::fs::read(path).unwrap();

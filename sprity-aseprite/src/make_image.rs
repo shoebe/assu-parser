@@ -91,6 +91,57 @@ impl AsepriteFile<'_> {
         Ok(pixels)
     }
 
+    pub fn combined_frame_image_cropped(&self, frame_index: usize) -> Result<CroppedImage, LoadImageError> {
+        let frame = &self.frames[frame_index];
+        let mut min_xy = (u32::MAX,u32::MAX);
+        let mut max_xy = (0,0);
+        for cel in frame.cells.iter() {
+            let layer = &self.layers[cel.layer_index()];
+            if !layer.visible() {
+                continue;
+            }
+            let im = &self.images_decompressed[cel.image_index];
+            min_xy.0 = u32::min(min_xy.0, cel.x());
+            min_xy.1 = u32::min(min_xy.1, cel.y());
+            max_xy.0 = u32::max(max_xy.0, cel.x() + im.width());
+            max_xy.1 = u32::max(max_xy.1, cel.y() + im.height());
+        }
+
+        let offset_xy = min_xy;
+        let dims_xy = (max_xy.0 - min_xy.0, max_xy.1 - min_xy.1);
+
+        let mut pixels = image::RgbaImage::new(dims_xy.0, dims_xy.1);
+
+        let frame = &self.frames[frame_index];
+
+        for cel in frame.cells.iter() {
+            let layer = &self.layers[cel.layer_index()];
+            if !layer.visible() {
+                continue;
+            }
+
+            let im = &self.images_decompressed[cel.image_index];
+
+            for (x, y, cel_pixel) in im.enumerate_pixels() {
+                let target_pixel = pixels.get_pixel_mut(x + cel.x() - offset_xy.0, y + cel.y() - offset_xy.1);
+
+                let total_alpha =
+                    ((cel_pixel.a() as u16 * layer.chunk.opacity as u16) / u8::MAX as u16) as u8;
+
+                for (target_c, cell_c) in target_pixel.channels_mut().iter_mut().zip(cel_pixel.channels()) {
+                    *target_c =
+                        blend_channel(*target_c, *cell_c, total_alpha, layer.chunk.blend_mode);
+                }
+            }
+        }
+
+        Ok(CroppedImage {
+            img: pixels,
+            displacement_x: offset_xy.0,
+            displacement_y: offset_xy.1,
+        })
+    }
+
 }
 
 
