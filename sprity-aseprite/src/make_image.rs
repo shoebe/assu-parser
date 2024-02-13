@@ -3,6 +3,7 @@ use crate::{
     loader::AsepriteFile, wrappers::PixelExt,
 };
 use image::{GenericImage, Pixel};
+use itertools::Itertools;
 use thiserror::Error;
 
 #[allow(missing_copy_implementations)]
@@ -18,6 +19,8 @@ pub enum LoadImageError {
     DecompressError,
     #[error("invalid image data")]
     InvalidImageData,
+    #[error("empty frame")]
+    EmptyFrame,
 }
 
 fn blend_channel(first: u8, second: u8, alpha: u8, blend_mode: BlendMode) -> u8 {
@@ -49,7 +52,7 @@ fn blend_channel(first: u8, second: u8, alpha: u8, blend_mode: BlendMode) -> u8 
     (blended.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 /// This image is not the full canvas size. 
 /// Displace it by displacement_x/y before layering it
 pub struct CroppedImage {
@@ -95,18 +98,22 @@ impl AsepriteFile<'_> {
         let frame = &self.frames[frame_index];
         let mut min_xy = (u32::MAX,u32::MAX);
         let mut max_xy = (0,0);
+        let mut is_cell = false;
         for cel in frame.cells.iter() {
             let layer = &self.layers[cel.layer_index()];
             if !layer.visible() {
                 continue;
             }
+            is_cell = true;
             let im = &self.images_decompressed[cel.image_index];
             min_xy.0 = u32::min(min_xy.0, cel.x());
             min_xy.1 = u32::min(min_xy.1, cel.y());
             max_xy.0 = u32::max(max_xy.0, cel.x() + im.width());
             max_xy.1 = u32::max(max_xy.1, cel.y() + im.height());
         }
-
+        if !is_cell {
+            return Err(LoadImageError::EmptyFrame);
+        }
         let offset_xy = min_xy;
         let dims_xy = (max_xy.0 - min_xy.0, max_xy.1 - min_xy.1);
 
@@ -140,6 +147,59 @@ impl AsepriteFile<'_> {
             displacement_x: offset_xy.0,
             displacement_y: offset_xy.1,
         })
+    }
+
+    pub fn packed_spritesheet(&self) -> anyhow::Result<image::RgbaImage> {
+        let config = texture_packer::TexturePackerConfig {
+            max_width: 512,
+            max_height: 512,
+            allow_rotation: false,
+            texture_outlines: true,
+            border_padding: 0,
+            force_max_dimensions: false,
+            texture_padding: 0,
+            texture_extrusion: 0,
+            trim: false, // should already be trimmed but just in case, don't want to mess up offsets
+        };
+
+        let mut packer = texture_packer::TexturePacker::new_skyline(config);
+
+        let mut frames = Vec::new();
+        let mut frame_map = ahash::HashMap::default();
+
+        for i in 0..self.frames.len() {
+            let f = self.combined_frame_image_cropped(i);
+            match f {
+                Ok(f) => {
+                    let p = frames.iter().position(|o| o == &f);
+                    if let Some(p) = p {
+                        frame_map.insert(i, p);
+                    } else {
+                        frame_map.insert(i, frames.len());
+                        frames.push(f);
+                    }
+                },
+                Err(LoadImageError::EmptyFrame) => (),
+                Err(e) => Err(e)?,
+            }
+        }
+
+        /* let mut frames = frames
+            .into_iter()
+            .enumerate()
+            .collect_vec();
+            
+
+        frames.sort_unstable_by_key(|(_, a)| a.img.width() * a.img.height());
+        frames.reverse(); */
+
+        for (i, f) in frames.into_iter().enumerate() {
+            packer.pack_own(i.to_string(), f.img).map_err(|s| anyhow::anyhow!("{s:?}"))?;
+        }
+
+        let out = texture_packer::exporter::ImageExporter::export(&packer).map_err(|s| anyhow::anyhow!(s))?;
+        
+        Ok(out.to_rgba8())
     }
 
 }
