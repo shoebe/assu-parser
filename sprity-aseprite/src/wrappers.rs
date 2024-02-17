@@ -1,5 +1,7 @@
 use std::{borrow::Cow, ops::RangeBounds};
 
+use itertools::Itertools;
+
 use crate::binary::chunks::{cel::CelChunk, layer::{LayerChunk, LayerFlags}, tags::TagChunk, user_data::UserDataChunk};
 
 /// A cel in a frame, there is usually 1 per layer
@@ -32,6 +34,8 @@ pub struct Frame<'a> {
     /// In milliseconds
     pub duration: u32,
     pub cells: Vec<Cel<'a>>,
+    /// None if frame is invisible
+    pub image_ind: Option<usize>,
 }
 
 impl Frame<'_> {
@@ -39,7 +43,7 @@ impl Frame<'_> {
         self.cells.iter()
     }
     pub fn cell_at_layer_index(&self, layer_index: usize) -> Option<Cel<'_>> {
-        // Binary search should be fast enough
+        // Binary search since they should be sorted
         self.cells
             .binary_search_by(|c| c.layer_index().cmp(&layer_index))
             .ok()
@@ -104,6 +108,6 @@ impl PixelExt for image::Rgba<u8> {
 
     fn zeroed() -> Self {
         Self([0;4])
-    }
-    
+    }   
 }
+

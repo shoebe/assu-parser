@@ -1,10 +1,10 @@
-use std::{borrow::Cow, mem::zeroed};
+use std::{borrow::Cow, collections::HashMap, mem::zeroed};
 
-use crate::binary::{
+use crate::{binary::{
     chunk::Chunk, chunks::{
         cel::CelContent, color_profile::ColorProfileChunk, tileset::TilesetChunk,
     }, color_depth::ColorDepth, header::Header, image::Image, palette::Palette, raw_file::{parse_raw_file, RawFile}
-};
+}, make_image::{CroppedImage, LoadImageError}};
 
 use crate::wrappers::*;
 
@@ -38,6 +38,7 @@ pub struct AsepriteFile<'a> {
     /// All images in the file
     pub images: Vec<Image<'a>>,
     pub images_decompressed: Vec<image::RgbaImage>,
+    pub frame_images: bimap::BiHashMap<usize, CroppedImage, ahash::RandomState, ahash::RandomState>,
     pub tilesets: Vec<TilesetChunk<'a>>,
 }
 
@@ -58,6 +59,7 @@ impl<'a> AsepriteFile<'a> {
             frames.push(Frame {
                 duration: raw_frame.duration as u32,
                 cells: Default::default(),
+                image_ind: None, 
             });
             let mut chunk_it = raw_frame.chunks.into_iter().peekable();
             while let Some(chunk) = chunk_it.next() {
@@ -190,7 +192,7 @@ impl<'a> AsepriteFile<'a> {
             } else {
                 image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.data.to_owned())
                     .ok_or_else(|| LoadSpriteError::Parse {
-                        message: format!("image::RgbaImage::from_raw error"),
+                        message:"image::RgbaImage::from_raw error".to_string(),
                     })?
             };
 
@@ -198,6 +200,23 @@ impl<'a> AsepriteFile<'a> {
         }).collect();
 
         let images_decompressed = images_decompressed?;
+
+        let mut frame_images = bimap::BiHashMap::<_,_,ahash::RandomState, ahash::RandomState>::default();
+
+        for (ind, f) in frames.iter_mut().enumerate() {
+            let img = f.combined_frame_image_cropped(&layers, &images_decompressed);
+            let img = match img {
+                Ok(img) => img,
+                Err(LoadImageError::EmptyFrame) => continue,
+                Err(e) => return Err(LoadSpriteError::Parse { message: e.to_string() }),
+            };
+            if let Some(ind) = frame_images.get_by_right(&img) {
+                f.image_ind = Some(*ind);
+            } else {
+                frame_images.insert(ind, img);
+                f.image_ind = Some(ind);
+            }
+        }
 
         Ok(Self {
             header: file.header,
@@ -210,7 +229,8 @@ impl<'a> AsepriteFile<'a> {
             tags,
             images,
             images_decompressed,
-            tilesets
+            tilesets,
+            frame_images,
         })
     }
 

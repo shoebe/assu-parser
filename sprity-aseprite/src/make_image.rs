@@ -2,8 +2,7 @@ use crate::{
     binary::blend_mode::BlendMode,
     loader::AsepriteFile, wrappers::PixelExt,
 };
-use image::{GenericImage, Pixel};
-use itertools::Itertools;
+use image::Pixel;
 use thiserror::Error;
 
 #[allow(missing_copy_implementations)]
@@ -52,13 +51,67 @@ fn blend_channel(first: u8, second: u8, alpha: u8, blend_mode: BlendMode) -> u8 
     (blended.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 /// This image is not the full canvas size. 
 /// Displace it by displacement_x/y before layering it
 pub struct CroppedImage {
     pub img: image::RgbaImage,
     pub displacement_x: u32,
     pub displacement_y: u32,
+}
+
+impl crate::wrappers::Frame<'_> {
+    pub fn combined_frame_image_cropped(&self, layers: &[crate::wrappers::Layer<'_>], images: &[image::RgbaImage]) -> Result<CroppedImage, LoadImageError> {
+        let mut min_xy = (u32::MAX,u32::MAX);
+        let mut max_xy = (0,0);
+        let mut is_cell = false;
+        for cel in self.cells.iter() {
+            let layer = &layers[cel.layer_index()];
+            if !layer.visible() {
+                continue;
+            }
+            is_cell = true;
+            let im = &images[cel.image_index];
+            min_xy.0 = u32::min(min_xy.0, cel.x());
+            min_xy.1 = u32::min(min_xy.1, cel.y());
+            max_xy.0 = u32::max(max_xy.0, cel.x() + im.width());
+            max_xy.1 = u32::max(max_xy.1, cel.y() + im.height());
+        }
+        if !is_cell {
+            return Err(LoadImageError::EmptyFrame);
+        }
+        let offset_xy = min_xy;
+        let dims_xy = (max_xy.0 - min_xy.0, max_xy.1 - min_xy.1);
+
+        let mut pixels = image::RgbaImage::new(dims_xy.0, dims_xy.1);
+
+        for cel in self.cells.iter() {
+            let layer = &layers[cel.layer_index()];
+            if !layer.visible() {
+                continue;
+            }
+
+            let im = &images[cel.image_index];
+
+            for (x, y, cel_pixel) in im.enumerate_pixels() {
+                let target_pixel = pixels.get_pixel_mut(x + cel.x() - offset_xy.0, y + cel.y() - offset_xy.1);
+
+                let total_alpha =
+                    ((cel_pixel.a() as u16 * layer.chunk.opacity as u16) / u8::MAX as u16) as u8;
+
+                for (target_c, cell_c) in target_pixel.channels_mut().iter_mut().zip(cel_pixel.channels()) {
+                    *target_c =
+                        blend_channel(*target_c, *cell_c, total_alpha, layer.chunk.blend_mode);
+                }
+            }
+        }
+
+        Ok(CroppedImage {
+            img: pixels,
+            displacement_x: offset_xy.0,
+            displacement_y: offset_xy.1,
+        })
+    }
 }
 
 impl AsepriteFile<'_> {
@@ -94,61 +147,6 @@ impl AsepriteFile<'_> {
         Ok(pixels)
     }
 
-    pub fn combined_frame_image_cropped(&self, frame_index: usize) -> Result<CroppedImage, LoadImageError> {
-        let frame = &self.frames[frame_index];
-        let mut min_xy = (u32::MAX,u32::MAX);
-        let mut max_xy = (0,0);
-        let mut is_cell = false;
-        for cel in frame.cells.iter() {
-            let layer = &self.layers[cel.layer_index()];
-            if !layer.visible() {
-                continue;
-            }
-            is_cell = true;
-            let im = &self.images_decompressed[cel.image_index];
-            min_xy.0 = u32::min(min_xy.0, cel.x());
-            min_xy.1 = u32::min(min_xy.1, cel.y());
-            max_xy.0 = u32::max(max_xy.0, cel.x() + im.width());
-            max_xy.1 = u32::max(max_xy.1, cel.y() + im.height());
-        }
-        if !is_cell {
-            return Err(LoadImageError::EmptyFrame);
-        }
-        let offset_xy = min_xy;
-        let dims_xy = (max_xy.0 - min_xy.0, max_xy.1 - min_xy.1);
-
-        let mut pixels = image::RgbaImage::new(dims_xy.0, dims_xy.1);
-
-        let frame = &self.frames[frame_index];
-
-        for cel in frame.cells.iter() {
-            let layer = &self.layers[cel.layer_index()];
-            if !layer.visible() {
-                continue;
-            }
-
-            let im = &self.images_decompressed[cel.image_index];
-
-            for (x, y, cel_pixel) in im.enumerate_pixels() {
-                let target_pixel = pixels.get_pixel_mut(x + cel.x() - offset_xy.0, y + cel.y() - offset_xy.1);
-
-                let total_alpha =
-                    ((cel_pixel.a() as u16 * layer.chunk.opacity as u16) / u8::MAX as u16) as u8;
-
-                for (target_c, cell_c) in target_pixel.channels_mut().iter_mut().zip(cel_pixel.channels()) {
-                    *target_c =
-                        blend_channel(*target_c, *cell_c, total_alpha, layer.chunk.blend_mode);
-                }
-            }
-        }
-
-        Ok(CroppedImage {
-            img: pixels,
-            displacement_x: offset_xy.0,
-            displacement_y: offset_xy.1,
-        })
-    }
-
     pub fn packed_spritesheet(&self) -> anyhow::Result<image::RgbaImage> {
         let config = texture_packer::TexturePackerConfig {
             max_width: 512,
@@ -167,8 +165,8 @@ impl AsepriteFile<'_> {
         let mut frames = Vec::new();
         let mut frame_map = ahash::HashMap::default();
 
-        for i in 0..self.frames.len() {
-            let f = self.combined_frame_image_cropped(i);
+        for (i, f) in self.frames.iter().enumerate() {
+            let f = f.combined_frame_image_cropped(&self.layers, &self.images_decompressed);
             match f {
                 Ok(f) => {
                     let p = frames.iter().position(|o| o == &f);
@@ -195,6 +193,30 @@ impl AsepriteFile<'_> {
 
         for (i, f) in frames.into_iter().enumerate() {
             packer.pack_own(i.to_string(), f.img).map_err(|s| anyhow::anyhow!("{s:?}"))?;
+        }
+
+        let out = texture_packer::exporter::ImageExporter::export(&packer).map_err(|s| anyhow::anyhow!(s))?;
+        
+        Ok(out.to_rgba8())
+    }
+
+    pub fn packed_spritesheet2(&self) -> anyhow::Result<image::RgbaImage> {
+        let config = texture_packer::TexturePackerConfig {
+            max_width: 512,
+            max_height: 512,
+            allow_rotation: false,
+            texture_outlines: true,
+            border_padding: 0,
+            force_max_dimensions: false,
+            texture_padding: 0,
+            texture_extrusion: 0,
+            trim: false, // should already be trimmed but just in case, don't want to mess up offsets
+        };
+
+        let mut packer = texture_packer::TexturePacker::new_skyline(config);
+
+        for (i, f) in self.frame_images.iter() {
+            packer.pack_own(i.to_string(), f.img.clone()).map_err(|s| anyhow::anyhow!("{s:?}"))?;
         }
 
         let out = texture_packer::exporter::ImageExporter::export(&packer).map_err(|s| anyhow::anyhow!(s))?;
