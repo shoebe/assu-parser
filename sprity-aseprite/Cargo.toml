@@ -19,7 +19,6 @@ nom = "7"
 strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
-is-macro = "0.3.5"
 ahash = "0.8.8"
 image = { version = "0.24.8", default-features = false, features = ["png"] }
 texture_packer = "0.27.0"

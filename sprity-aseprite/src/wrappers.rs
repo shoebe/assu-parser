@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::RangeBounds};
+use std::{borrow::Cow, ops::{RangeBounds, RangeInclusive}, str::FromStr};
 
 use itertools::Itertools;
 
@@ -34,8 +34,6 @@ pub struct Frame<'a> {
     /// In milliseconds
     pub duration: u32,
     pub cells: Vec<Cel<'a>>,
-    /// None if frame is invisible
-    pub image_ind: Option<usize>,
 }
 
 impl Frame<'_> {
@@ -51,14 +49,15 @@ impl Frame<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Tag<'a> {
     pub chunk: TagChunk<'a>,
     pub user_data: UserDataChunk<'a>,
+    pub parameters: TagParameters,
 }
 
 impl Tag<'_> {
-    pub fn frame_range(&self) -> impl RangeBounds<usize> {
+    pub fn frame_range(&self) -> RangeInclusive<usize> {
         self.chunk.frames.0 as usize..=self.chunk.frames.1 as usize
     }
     pub fn name(&self) -> &str {
@@ -66,10 +65,11 @@ impl Tag<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Layer<'a> {
     pub chunk: LayerChunk<'a>,
     pub user_data: UserDataChunk<'a>,
+    pub parameters: LayerParameters,
 }
 
 impl Layer<'_> {
@@ -78,6 +78,52 @@ impl Layer<'_> {
     }
     pub fn visible(&self) -> bool {
         self.chunk.flags.contains(LayerFlags::VISIBLE)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum_macros::EnumString)]
+#[strum(serialize_all = "snake_case")]
+pub enum LayerParameter {
+    Hitbox,
+    Invisible,
+    //Seperate, //TODO: implement
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum_macros::EnumString)]
+pub enum TagParameter {
+    // TODO: what do we want here? Velocity-controls maybe? Might be easier to do that kinda thing from code though...
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum_macros::EnumString)]
+pub enum FrameParameter {
+    // TODO: what do we want here? Being able to tie an action to a particular frame is important
+    // Flip visibilty of another layer?
+    // 
+}
+
+pub type LayerParameters = ahash::AHashMap<LayerParameter, String>;
+pub type TagParameters = Vec<(TagParameter, String)>;
+
+impl UserDataChunk<'_> {
+    pub fn parse_text_as_layer_parameters(&self) -> LayerParameters {
+        self.text
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .flat_map(|s| LayerParameter::from_str(&s))
+            .map(|s| (s, "".to_string()))
+            .collect()
+    }
+    pub fn parse_text_as_tag_parameters(&self) -> TagParameters {
+        self.text
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .flat_map(|s| TagParameter::from_str(&s))
+            .map(|s| (s, "".to_string()))
+            .collect()
     }
 }
 

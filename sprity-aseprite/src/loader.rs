@@ -38,7 +38,6 @@ pub struct AsepriteFile<'a> {
     /// All images in the file
     pub images: Vec<Image<'a>>,
     pub images_decompressed: Vec<image::RgbaImage>,
-    pub frame_images: bimap::BiHashMap<usize, CroppedImage, ahash::RandomState, ahash::RandomState>,
     pub tilesets: Vec<TilesetChunk<'a>>,
 }
 
@@ -59,7 +58,6 @@ impl<'a> AsepriteFile<'a> {
             frames.push(Frame {
                 duration: raw_frame.duration as u32,
                 cells: Default::default(),
-                image_ind: None, 
             });
             let mut chunk_it = raw_frame.chunks.into_iter().peekable();
             while let Some(chunk) = chunk_it.next() {
@@ -95,7 +93,11 @@ impl<'a> AsepriteFile<'a> {
                         } else {
                             Default::default()
                         };
-                        layers.push(Layer { chunk, user_data });
+                        layers.push(Layer { 
+                            chunk, 
+                            parameters: user_data.parse_text_as_layer_parameters(), 
+                            user_data,
+                        });
                     }
                     Chunk::Tileset(t) => {
                         tilesets.push(t);
@@ -150,7 +152,7 @@ impl<'a> AsepriteFile<'a> {
                             } else {
                                 Default::default()
                             };
-                            Tag { chunk, user_data }
+                            Tag { chunk, parameters: user_data.parse_text_as_tag_parameters(), user_data }
                         }))
                     }
                     // below aren't needed for current functionality
@@ -201,23 +203,6 @@ impl<'a> AsepriteFile<'a> {
 
         let images_decompressed = images_decompressed?;
 
-        let mut frame_images = bimap::BiHashMap::<_,_,ahash::RandomState, ahash::RandomState>::default();
-
-        for (ind, f) in frames.iter_mut().enumerate() {
-            let img = f.combined_frame_image_cropped(&layers, &images_decompressed);
-            let img = match img {
-                Ok(img) => img,
-                Err(LoadImageError::EmptyFrame) => continue,
-                Err(e) => return Err(LoadSpriteError::Parse { message: e.to_string() }),
-            };
-            if let Some(ind) = frame_images.get_by_right(&img) {
-                f.image_ind = Some(*ind);
-            } else {
-                frame_images.insert(ind, img);
-                f.image_ind = Some(ind);
-            }
-        }
-
         Ok(Self {
             header: file.header,
             color_profile: color_profile.ok_or_else(|| LoadSpriteError::Parse {
@@ -230,7 +215,6 @@ impl<'a> AsepriteFile<'a> {
             images,
             images_decompressed,
             tilesets,
-            frame_images,
         })
     }
 

@@ -1,4 +1,4 @@
-use sprity_aseprite::loader::AsepriteFile;
+use sprity_aseprite::{loader::AsepriteFile, output::AnimationSet};
 
 #[test]
 fn test_cell() {
@@ -60,24 +60,6 @@ fn test_combine_cropped() {
         let expected_rgba = expected.as_rgba8().unwrap();
         assert!(expected_rgba == &img.img);
     }
-}
-
-#[test]
-fn test_spritesheet_pack() {
-    let path = "tests/aseprite_files/combine.aseprite";
-    let file = std::fs::read(path).unwrap();
-    let file = AsepriteFile::from_bytes(&file).unwrap();
-    let img = file.packed_spritesheet2().unwrap();
-    
-    std::fs::create_dir_all("tests/generated_pngs").unwrap();
-    let path = "tests/generated_pngs/packed_spritesheet.png";
-    img.save_with_format(path, image::ImageFormat::Png).unwrap();
-        
-    // hashmap/packing is random, need to verify visually
-    //let expected_path = "tests/expected_pngs/packed_spritesheet.png";
-    //let expected = image::io::Reader::open(expected_path).unwrap().decode().unwrap();
-    //let expected_rgba = expected.as_rgba8().unwrap();
-    //assert!(expected_rgba == &img);
 }
 
 #[test]

@@ -1,6 +1,5 @@
 use crate::{
-    binary::blend_mode::BlendMode,
-    loader::AsepriteFile, wrappers::PixelExt,
+    binary::blend_mode::BlendMode, loader::AsepriteFile, wrappers::PixelExt
 };
 use image::Pixel;
 use thiserror::Error;
@@ -60,6 +59,13 @@ pub struct CroppedImage {
     pub displacement_y: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hitbox {
+    pub offset: (u32, u32),
+    pub size: (u32, u32),
+    pub layer_id: usize,
+}
+
 impl crate::wrappers::Frame<'_> {
     pub fn combined_frame_image_cropped(&self, layers: &[crate::wrappers::Layer<'_>], images: &[image::RgbaImage]) -> Result<CroppedImage, LoadImageError> {
         let mut min_xy = (u32::MAX,u32::MAX);
@@ -67,7 +73,7 @@ impl crate::wrappers::Frame<'_> {
         let mut is_cell = false;
         for cel in self.cells.iter() {
             let layer = &layers[cel.layer_index()];
-            if !layer.visible() {
+            if layer.parameters.contains_key(&crate::wrappers::LayerParameter::Invisible) {
                 continue;
             }
             is_cell = true;
@@ -87,7 +93,7 @@ impl crate::wrappers::Frame<'_> {
 
         for cel in self.cells.iter() {
             let layer = &layers[cel.layer_index()];
-            if !layer.visible() {
+            if layer.parameters.contains_key(&crate::wrappers::LayerParameter::Invisible) {
                 continue;
             }
 
@@ -111,6 +117,26 @@ impl crate::wrappers::Frame<'_> {
             displacement_x: offset_xy.0,
             displacement_y: offset_xy.1,
         })
+    }
+
+    pub fn hitboxes(&self, layers: &[crate::wrappers::Layer<'_>], images: &[image::RgbaImage]) -> Vec<Hitbox> {
+        let mut out = Vec::new();
+        for cel in self.cells.iter() {
+            let layer = &layers[cel.layer_index()];
+            if !layer.parameters.contains_key(&crate::wrappers::LayerParameter::Hitbox) {
+                continue;
+            }
+            let img = &images[cel.image_index];
+            // TODO: this currently just takes the bounding box of whatever was painted.
+            //       would be possible to decompose the painting into pixel-perfect smaller rectangles
+            //       See https://en.wikipedia.org/wiki/Polygon_covering#Covering_a_rectilinear_polygon_with_rectangles
+            out.push(Hitbox {
+                offset: (cel.x(), cel.x()),
+                size: img.dimensions(),
+                layer_id: cel.layer_index(),
+            })
+        }
+        out
     }
 }
 
@@ -193,30 +219,6 @@ impl AsepriteFile<'_> {
 
         for (i, f) in frames.into_iter().enumerate() {
             packer.pack_own(i.to_string(), f.img).map_err(|s| anyhow::anyhow!("{s:?}"))?;
-        }
-
-        let out = texture_packer::exporter::ImageExporter::export(&packer).map_err(|s| anyhow::anyhow!(s))?;
-        
-        Ok(out.to_rgba8())
-    }
-
-    pub fn packed_spritesheet2(&self) -> anyhow::Result<image::RgbaImage> {
-        let config = texture_packer::TexturePackerConfig {
-            max_width: 512,
-            max_height: 512,
-            allow_rotation: false,
-            texture_outlines: true,
-            border_padding: 0,
-            force_max_dimensions: false,
-            texture_padding: 0,
-            texture_extrusion: 0,
-            trim: false, // should already be trimmed but just in case, don't want to mess up offsets
-        };
-
-        let mut packer = texture_packer::TexturePacker::new_skyline(config);
-
-        for (i, f) in self.frame_images.iter() {
-            packer.pack_own(i.to_string(), f.img.clone()).map_err(|s| anyhow::anyhow!("{s:?}"))?;
         }
 
         let out = texture_packer::exporter::ImageExporter::export(&packer).map_err(|s| anyhow::anyhow!(s))?;
