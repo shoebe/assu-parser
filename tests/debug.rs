@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write};
 
-use sprity_aseprite::{loader::AsepriteFile, output::AnimationSet};
+use assu_parser::{loader::AsepriteFile, output::AnimationSet};
 
 
 #[test]

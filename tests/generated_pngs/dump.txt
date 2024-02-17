@@ -1,0 +1,229 @@
+AnimationSet {
+    layer_parameters: [
+        {},
+        {
+            Hitbox: "",
+            Invisible: "",
+        },
+    ],
+    animations: {
+        "ye": Animation {
+            frames: [
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test4",
+                            offset: (
+                                0,
+                                10,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                8,
+                                8,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test4",
+                            offset: (
+                                0,
+                                10,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                8,
+                                8,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test6",
+                            offset: (
+                                0,
+                                10,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                2,
+                                2,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test7",
+                            offset: (
+                                5,
+                                9,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                10,
+                                10,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+            ],
+            actions: [],
+        },
+        "yipee": Animation {
+            frames: [
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test0",
+                            offset: (
+                                0,
+                                10,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                2,
+                                2,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test1",
+                            offset: (
+                                0,
+                                9,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                6,
+                                6,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test2",
+                            offset: (
+                                0,
+                                9,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                4,
+                                4,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+                AnimFrame {
+                    duration: 100,
+                    image_ids: Some(
+                        ImageId {
+                            image_ref: "test3",
+                            offset: (
+                                0,
+                                9,
+                            ),
+                        },
+                    ),
+                    hitboxes: [
+                        Hitbox {
+                            offset: (
+                                7,
+                                7,
+                            ),
+                            size: (
+                                2,
+                                2,
+                            ),
+                            layer_id: 1,
+                        },
+                    ],
+                    actions: [],
+                },
+            ],
+            actions: [],
+        },
+    },
+}

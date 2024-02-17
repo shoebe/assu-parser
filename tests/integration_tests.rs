@@ -1,4 +1,4 @@
-use sprity_aseprite::{loader::AsepriteFile, output::AnimationSet};
+use assu_parser::{loader::AsepriteFile, output::AnimationSet};
 
 #[test]
 fn test_cell() {

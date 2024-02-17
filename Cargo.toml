@@ -1,21 +1,25 @@
 [package]
-name = "sprity"
+name = "assu-parser"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
-authors = ["Michael P. Jung <michael.jung@terreon.de>"]
-description = "Sprite sheet loader"
-keywords = ["sprite", "aseprite", "bevy"]
+authors = ["Sebastien Marleau <smarleau.2019@gmail.com>"]
+description = "Aseprite file parser with texture packing capabilities"
+keywords = ["sprite", "aseprite", "binary", "loader", "atlas"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/bikeshedder/sprity"
+repository = "https://github.com/shoebe/aseprite-parser"
 readme = "README.md"
 
-[features]
-default = ['aseprite']
-aseprite = ['sprity-aseprite']
-
 [dependencies]
-sprity-aseprite = { path = "./sprity-aseprite", version = "0.1.0", optional = true }
-
-[workspace]
-members = ["sprity-*"]
+bitflags = "2.4"
+flate2 = "1.0"
+itertools = "0.12"
+nom = "7.1"
+strum = "0.26"
+strum_macros = "0.26"
+thiserror = "1.0"
+ahash = "0.8"
+image = { version = "0.24", default-features = false, features = ["png"] }
+texture_packer = "0.27"
+anyhow = "1.0"
+bimap = "0.6"
