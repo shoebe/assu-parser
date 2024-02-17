@@ -1,12 +1,4 @@
-# Sprity [![Latest Version](https://img.shields.io/crates/v/sprity.svg)](https://crates.io/crates/sprity)
-
-Sprity is a sprite sheet loader for animated and layered sprites.
-
-## Features
-
-| Feature    | Description                       | Extra dependencies | Default |
-| ---------- | --------------------------------- | ------------------ | ------- |
-| `aseprite` | Enable support for aseprite files | `sprity-aseprite`  | yes     |
+# assu-parser
 
 ## License
 
