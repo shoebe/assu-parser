@@ -8,7 +8,8 @@ use crate::{loader::AsepriteFile, make_image::{CroppedImage, Hitbox, LoadImageEr
 pub struct ImageId {
     //pub layer_id: usize,
     pub image_ref: String,
-    pub offset: (u32, u32),
+    // offset by this amount if texture has tl as origin
+    pub tl_offset: (u32, u32),
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +28,7 @@ pub struct Animation {
 
 #[derive(Debug)]
 pub struct AnimationSet {
+    pub canvas_size: (u32, u32),
     pub layer_parameters: Vec<LayerParameters>,
     pub animations: ahash::AHashMap<String, Animation>, // TODO: not string, some form of enum repr?
 }
@@ -45,7 +47,7 @@ impl AnimationSet {
             };
             let mut img_id = Vec::new();
             if let Some(img) = img {
-                let offset = (img.displacement_x, img.displacement_y); 
+                let tl_offset = (img.displacement_x, img.displacement_y); 
                 let img_ref = if let Some(img_ref) = frame_image_dedup.get_by_right(&img.img) {
                     img_ref.to_owned()
                 } else {
@@ -55,7 +57,8 @@ impl AnimationSet {
                     frame_image_dedup.insert(img_ref.clone(), img.img);
                     img_ref
                 };
-                img_id.push(ImageId { image_ref: img_ref, offset });
+
+                img_id.push(ImageId { image_ref: img_ref, tl_offset });
             }
 
             anim_frames.push(AnimFrame {
@@ -81,6 +84,7 @@ impl AnimationSet {
         let layer_parameters = file.layers.into_iter().map(|l| l.parameters).collect_vec();
         
         Ok(Self {
+            canvas_size: (file.header.width as u32, file.header.height as u32),
             layer_parameters,
             animations,
         })
