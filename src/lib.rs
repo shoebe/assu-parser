@@ -26,3 +26,4 @@ pub mod loader;
 pub mod make_image;
 pub mod wrappers;
 pub mod output;
+pub use output::*;
